@@ -171,6 +171,10 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'r' || e.key === 'R') { order = shuffle(listings); idx = 0; show(); }
 });
 
+secEl.addEventListener('change', () => {
+  if (timer) startTimer();
+});
+  
 fetch('./listings.json', { cache: 'no-store' })
   .then(r => r.json())
   .then(d => {
