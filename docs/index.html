@@ -42,7 +42,7 @@
     if(e.key==='r' || e.key==='R'){ order = shuffle([...listings]); idx=0; show(); }
   });
 
-  fetch('./listings.json',{cache:'no-store'})
+fetch('https://raw.githubusercontent.com/SherkstonSales/Random-Listing-Display/main/docs/listings.json?cb=' + Date.now(), { cache: 'no-store' })
     .then(r=>r.json())
     .then(d=>{
       listings = d.listings || [];
