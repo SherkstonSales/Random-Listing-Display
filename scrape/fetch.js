@@ -1,8 +1,12 @@
 const fs = require("fs");
 const { chromium } = require("playwright");
 
-const START_URL =
+const BASE =
   "https://www.sunoutdoors.com/ontario/sun-retreats-sherkston-shores/vacation-home-sales";
+
+function pageUrl(n) {
+  return `${BASE}?pageno=${n}`;
+}
 
 async function tryClickCookieOrModalButtons(page) {
   const selectors = [
@@ -24,16 +28,6 @@ async function tryClickCookieOrModalButtons(page) {
   }
 }
 
-async function getUrlsFromDom(page) {
-  const fromData = await page.$$eval(".storemapdata[data-url]", (els) =>
-    els.map((e) => e.getAttribute("data-url")).filter(Boolean)
-  );
-  const fromButtons = await page.$$eval("a.seeDetailsDL[href]", (els) =>
-    els.map((e) => e.href).filter(Boolean)
-  );
-  return [...fromData, ...fromButtons];
-}
-
 async function waitForListings(page) {
   await page.waitForSelector(".storemapdata[data-url], a.seeDetailsDL", {
     timeout: 60000,
@@ -41,31 +35,14 @@ async function waitForListings(page) {
   });
 }
 
-async function getTotalPages(page) {
-  // Try to read the largest numbered page link
-  const nums = await page.$$eval("a.page-link", (els) => {
-    const out = [];
-    for (const a of els) {
-      const t = (a.textContent || "").trim();
-      if (/^\d+$/.test(t)) out.push(parseInt(t, 10));
-    }
-    return out;
-  });
-  return nums.length ? Math.max(...nums) : 1;
-}
-
-async function clickPageNumber(page, n) {
-  // Click the numbered page link like <a class="page-link">2</a>
-  const locator = page.locator("a.page-link", { hasText: String(n) }).first();
-
-  // Ensure it exists
-  const count = await locator.count();
-  if (!count) return false;
-
-  // Scroll into view & click
-  await locator.scrollIntoViewIfNeeded().catch(() => {});
-  await locator.click().catch(() => {});
-  return true;
+async function getListingUrls(page) {
+  const fromData = await page.$$eval(".storemapdata[data-url]", (els) =>
+    els.map((e) => e.getAttribute("data-url")).filter(Boolean)
+  );
+  const fromButtons = await page.$$eval("a.seeDetailsDL[href]", (els) =>
+    els.map((e) => e.href).filter(Boolean)
+  );
+  return Array.from(new Set([...fromData, ...fromButtons]));
 }
 
 (async () => {
@@ -77,35 +54,38 @@ async function clickPageNumber(page, n) {
     locale: "en-CA"
   });
 
-  await page.goto(START_URL, { waitUntil: "domcontentloaded" });
-  await page.waitForTimeout(2500);
-  await tryClickCookieOrModalButtons(page);
-
-  await waitForListings(page);
-
-  const totalPages = await getTotalPages(page);
-  const listingUrls = new Set();
-
+  const listingSet = new Set();
   let pagesVisited = 0;
 
-  // Always scrape page 1 first
-  pagesVisited++;
-  (await getUrlsFromDom(page)).forEach((u) => listingUrls.add(u));
+  // Loop pages until we stop seeing new listings.
+  // Safety cap at 100 pages (way above your ~20).
+  for (let n = 1; n <= 100; n++) {
+    const url = pageUrl(n);
 
-  // Now go through remaining pages explicitly
-  for (let p = 2; p <= totalPages; p++) {
-    const ok = await clickPageNumber(page, p);
-    if (!ok) break;
-
-    // Wait for the listing set to change by waiting a moment + re-attached selector
-    await page.waitForTimeout(1200);
+    await page.goto(url, { waitUntil: "domcontentloaded" });
+    await page.waitForTimeout(2000);
     await tryClickCookieOrModalButtons(page);
-    await waitForListings(page);
 
-    pagesVisited++;
-    (await getUrlsFromDom(page)).forEach((u) => listingUrls.add(u));
+    // If listings never appear on a page, assume we’re past the last page.
+    try {
+      await waitForListings(page);
+    } catch {
+      break;
+    }
 
-    // small safety pause so we don't hammer the site
+    const urls = await getListingUrls(page);
+
+    // If page returns nothing, stop.
+    if (!urls.length) break;
+
+    const before = listingSet.size;
+    urls.forEach((u) => listingSet.add(u));
+    pagesVisited = n;
+
+    // If we didn’t add anything new, we’ve hit the end.
+    if (listingSet.size === before) break;
+
+    // polite delay
     await page.waitForTimeout(250);
   }
 
@@ -113,17 +93,15 @@ async function clickPageNumber(page, n) {
 
   const out = {
     updatedAt: new Date().toISOString(),
-    source: START_URL,
-    totalPagesDetected: totalPages,
+    source: BASE,
+    pagination: "pageno",
     pagesVisited,
-    count: listingUrls.size,
-    listings: Array.from(listingUrls)
+    count: listingSet.size,
+    listings: Array.from(listingSet)
   };
 
   fs.mkdirSync("docs", { recursive: true });
   fs.writeFileSync("docs/listings.json", JSON.stringify(out, null, 2), "utf-8");
 
-  console.log(
-    `Detected ${totalPages} pages. Visited ${pagesVisited}. Saved ${out.count} listing URLs.`
-  );
+  console.log(`Visited ${pagesVisited} pages, saved ${out.count} listing URLs.`);
 })();
