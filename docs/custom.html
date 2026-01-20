@@ -1,1 +1,142 @@
+<!doctype html>
+<html>
+<head>
+  <meta charset="utf-8" />
+  <title>Sherkston Custom Display</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    html,body{height:100%;margin:0;background:#0b0b0b;color:#fff;font-family:system-ui,Arial}
+    .wrap{display:grid;grid-template-columns: 62% 38%;height:100%}
+    .left{position:relative;background:#000;overflow:hidden;display:flex;align-items:center;justify-content:center}
+    .hint{opacity:.85;text-align:center;max-width:70%}
+    .hud{position:absolute;left:14px;bottom:14px;background:rgba(0,0,0,.72);padding:12px 14px;border-radius:12px;line-height:1.2}
+    .right{padding:18px;overflow:auto}
+    .title{font-size:22px;margin:0 0 8px;opacity:.95}
+    .url{font-size:12px;opacity:.75;word-break:break-all;margin:0 0 14px}
+    .controls{position:sticky;top:0;background:linear-gradient(#0b0b0b 75%, rgba(11,11,11,0));padding:10px 0 12px;z-index:2}
+    button{font-size:14px;padding:10px 12px;border-radius:10px;border:1px solid #2a2a2a;background:#141414;color:#fff;cursor:pointer;margin:6px 6px 0 0}
+    button:hover{background:#1c1c1c}
+    .primary{border-color:#3a3a3a;background:#1a1a1a;font-weight:700}
+    .note{opacity:.7;font-size:12px;margin-top:8px}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="left">
+      <div class="hint">
+        <div style="font-size:22px;margin-bottom:8px;">Custom Display (Phase 1)</div>
+        <div>
+          This page rotates listings and provides a clean “Open Listing” action.
+          <br><br>
+          Next phase (after we upgrade the scraper): photos, features, description.
+        </div>
+      </div>
 
+      <div class="hud" id="hud">
+        <div><strong>Custom Rotation</strong></div>
+        <small id="hudLine">Loading…</small>
+      </div>
+    </div>
+
+    <div class="right">
+      <div class="controls">
+        <button class="primary" id="pause">Pause</button>
+        <button id="next">Next</button>
+        <button id="shuffle">Shuffle</button>
+        <button id="open">Open Listing</button>
+        <div class="note">Keys: Space = Pause/Play · → = Next · R = Shuffle</div>
+      </div>
+
+      <h2 class="title" id="title">—</h2>
+      <p class="url" id="url">—</p>
+    </div>
+  </div>
+
+<script>
+  const LISTING_SECONDS = 20;
+
+  let listings = [];
+  let order = [];
+  let idx = 0;
+  let paused = false;
+  let timer = null;
+
+  const hudLine = document.getElementById('hudLine');
+  const titleEl = document.getElementById('title');
+  const urlEl = document.getElementById('url');
+  const pauseBtn = document.getElementById('pause');
+
+  function shuffle(arr){
+    const a = arr.slice();
+    for(let i=a.length-1;i>0;i--){
+      const j = Math.floor(Math.random()*(i+1));
+      [a[i],a[j]] = [a[j],a[i]];
+    }
+    return a;
+  }
+
+  function render(){
+    if(!order.length) return;
+    const url = order[idx];
+
+    titleEl.textContent = `Listing ${idx+1} of ${order.length}`;
+    urlEl.textContent = url;
+
+    hudLine.textContent = `${paused ? 'Paused' : 'Playing'} · ${idx+1}/${order.length}`;
+  }
+
+  function next(){
+    if(!order.length) return;
+    idx = (idx + 1) % order.length;
+    render();
+  }
+
+  function startTimer(){
+    clearInterval(timer);
+    timer = setInterval(()=>{ if(!paused) next(); }, LISTING_SECONDS * 1000);
+  }
+
+  document.getElementById('pause').onclick = ()=>{
+    paused = !paused;
+    pauseBtn.textContent = paused ? 'Play' : 'Pause';
+    render();
+  };
+  document.getElementById('next').onclick = ()=> next();
+  document.getElementById('shuffle').onclick = ()=>{
+    order = shuffle(listings);
+    idx = 0;
+    render();
+  };
+  document.getElementById('open').onclick = ()=>{
+    const url = order[idx];
+    if(url) window.open(url, '_blank');
+  };
+
+  document.addEventListener('keydown', (e)=>{
+    if(e.code==='Space'){ paused=!paused; pauseBtn.textContent = paused ? 'Play' : 'Pause'; render(); }
+    if(e.code==='ArrowRight') next();
+    if(e.key==='r' || e.key==='R'){ order = shuffle(listings); idx = 0; render(); }
+  });
+
+  fetch('./listings.json', { cache:'no-store' })
+    .then(r => r.json())
+    .then(d => {
+      listings = d.listings || [];
+      if(!listings.length){
+        hudLine.textContent = 'No listings found in listings.json';
+        return;
+      }
+      order = shuffle(listings);
+      idx = 0;
+      paused = false;
+      pauseBtn.textContent = 'Pause';
+      render();
+      startTimer();
+    })
+    .catch(err => {
+      console.log(err);
+      hudLine.textContent = 'Error loading listings.json';
+    });
+</script>
+</body>
+</html>
