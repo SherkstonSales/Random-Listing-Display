@@ -62,8 +62,8 @@ async function getListingUrls(page) {
   for (let n = 1; n <= 100; n++) {
     const url = pageUrl(n);
 
-    await page.goto(url, { waitUntil: "domcontentloaded" });
-    await page.waitForTimeout(2000);
+await page.goto(url, { timeout: 30000 });
+
     await tryClickCookieOrModalButtons(page);
 
     // If listings never appear on a page, assume we’re past the last page.
