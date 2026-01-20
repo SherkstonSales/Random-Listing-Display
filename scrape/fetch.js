@@ -1,102 +1,102 @@
-const fs = require('fs');
-const { chromium } = require('playwright');
+const fs = require("fs");
+const { chromium } = require("playwright");
 
 const START_URL =
-  'https://www.sunoutdoors.com/ontario/sun-retreats-sherkston-shores/vacation-home-sales';
+  "https://www.sunoutdoors.com/ontario/sun-retreats-sherkston-shores/vacation-home-sales";
 
-// Click the "Next" pagination button (your site uses class="page-link next")
+async function tryClickCookieOrModalButtons(page) {
+  // Common cookie/consent / modal close patterns
+  const selectors = [
+    'button:has-text("Accept")',
+    'button:has-text("I Accept")',
+    'button:has-text("Accept All")',
+    'button:has-text("Agree")',
+    'button:has-text("OK")',
+    'button:has-text("Got it")',
+    'button[aria-label="Close"]',
+    'button:has-text("Close")',
+    'a:has-text("Accept")'
+  ];
+
+  for (const sel of selectors) {
+    const el = await page.$(sel);
+    if (el) {
+      await el.click().catch(() => {});
+      await page.waitForTimeout(600);
+    }
+  }
+}
+
+async function getUrlsFromDom(page) {
+  // Best source: hidden data-url
+  const fromData = await page.$$eval(".storemapdata[data-url]", (els) =>
+    els.map((e) => e.getAttribute("data-url")).filter(Boolean)
+  );
+
+  // Backup: See details buttons
+  const fromButtons = await page.$$eval("a.seeDetailsDL[href]", (els) =>
+    els.map((e) => e.href).filter(Boolean)
+  );
+
+  return [...fromData, ...fromButtons];
+}
+
 async function clickNext(page) {
-  const nextSelector = 'a.page-link.next';
-
-  const next = await page.$(nextSelector);
+  // Your pagination uses class="page-link next"
+  const sel = "a.page-link.next";
+  const next = await page.$(sel);
   if (!next) return false;
 
-  // Stop if disabled
-  const ariaDisabled = await next.getAttribute('aria-disabled');
-  const className = (await next.getAttribute('class')) || '';
-  const disabledAttr = await next.getAttribute('disabled');
+  // stop if disabled-ish
+  const ariaDisabled = await next.getAttribute("aria-disabled");
+  const disabledAttr = await next.getAttribute("disabled");
+  const className = (await next.getAttribute("class")) || "";
 
-  if (ariaDisabled === 'true' || disabledAttr !== null || className.includes('disabled')) {
+  if (ariaDisabled === "true" || disabledAttr !== null || className.includes("disabled")) {
     return false;
   }
 
-  // Click and allow the page to redraw listings
   await next.click().catch(() => {});
   return true;
 }
 
 (async () => {
   const browser = await chromium.launch();
-  const page = await browser.newPage();
-
-  // Go to the page and wait for JS to finish
-  await page.goto(START_URL, { waitUntil: 'networkidle' });
-
-  // Wait for listing elements to exist in the DOM
-  await page.waitForSelector('.dh-property-list, .storemapdata[data-url], a.seeDetailsDL', {
-    timeout: 60000
+  const page = await browser.newPage({
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+    viewport: { width: 1280, height: 800 },
+    locale: "en-CA"
   });
 
-  const listingUrls = new Set();
-  let pageCount = 0;
+  // Be a little more “real browser”-like
+  await page.setExtraHTTPHeaders({
+    "Accept-Language": "en-CA,en;q=0.9"
+  });
 
-  // Loop through pages (safety cap set high enough for 20+ pages)
-  for (let i = 0; i < 100; i++) {
-    pageCount++;
+  await page.goto(START_URL, { waitUntil: "domcontentloaded" });
 
-    // Pull urls from hidden storemapdata blocks (best source)
-    const urlsFromData = await page.$$eval('.storemapdata[data-url]', (els) =>
-      els
-        .map((e) => e.getAttribute('data-url'))
-        .filter(Boolean)
-    );
-    urlsFromData.forEach((u) => listingUrls.add(u));
+  // Give the JS app time to boot and make API calls
+  await page.waitForTimeout(3000);
+  await tryClickCookieOrModalButtons(page);
 
-    // Backup: pull urls from "See details" buttons
-    const urlsFromButtons = await page.$$eval('a.seeDetailsDL[href]', (els) =>
-      els
-        .map((e) => e.href)
-        .filter(Boolean)
-    );
-    urlsFromButtons.forEach((u) => listingUrls.add(u));
+  // Wait for the listing container to ATTACH (not necessarily visible)
+  // If the site renders offscreen or hidden briefly, "visible" can time out.
+  const selector = ".dh-property-list, .storemapdata[data-url], a.seeDetailsDL";
 
-    // Try to move to next page
-    const before = listingUrls.size;
-    const clicked = await clickNext(page);
-    if (!clicked) break;
-
-    // Wait a bit for the new page content to load / rerender
-    await page.waitForTimeout(1200);
-    await page.waitForLoadState('networkidle').catch(() => {});
-
-    // Ensure listings exist again after pagination
-    await page
-      .waitForSelector('.dh-property-list, .storemapdata[data-url], a.seeDetailsDL', {
-        timeout: 60000
-      })
-      .catch(() => {});
-
-    // If we clicked next but got no new URLs after several pages, break (prevents loops)
-    const after = listingUrls.size;
-    if (i >= 2 && after === before) {
-      // Could be stuck or last page not flagged as disabled
+  let found = false;
+  for (let attempt = 0; attempt < 6; attempt++) {
+    try {
+      await page.waitForSelector(selector, { timeout: 15000, state: "attached" });
+      found = true;
       break;
+    } catch {
+      // Sometimes it needs a nudge: scroll and wait again
+      await page.mouse.wheel(0, 800).catch(() => {});
+      await page.waitForTimeout(2000);
+      await tryClickCookieOrModalButtons(page);
     }
   }
 
-  await browser.close();
-
-  const out = {
-    updatedAt: new Date().toISOString(),
-    source: START_URL,
-    pagesVisited: pageCount,
-    count: listingUrls.size,
-    listings: Array.from(listingUrls)
-  };
-
-  // IMPORTANT: write to /docs so GitHub Pages can serve it in classic mode
-  fs.mkdirSync('docs', { recursive: true });
-  fs.writeFileSync('docs/listings.json', JSON.stringify(out, null, 2), 'utf-8');
-
-  console.log(`Visited ${pageCount} pages, saved ${out.count} listing URLs to docs/listings.json`);
-})();
+  if (!found) {
+    /
