@@ -1,184 +1,256 @@
 <!doctype html>
-<html lang="en">
+<html>
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <title>My GitHub Page</title>
-  <meta name="description" content="A simple GitHub Pages index with safe Previous / Current / Next navigation." />
-
+  <title>Sherkston Listings Display</title>
   <style>
-    :root { color-scheme: light dark; }
-    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.4; }
-    header, main, footer { max-width: 980px; margin: 0 auto; padding: 16px; }
-    header { padding-top: 28px; padding-bottom: 8px; }
-    h1 { margin: 0 0 6px 0; font-size: 28px; }
-    .sub { opacity: 0.75; margin: 0; }
-
-    .toolbar {
-      display: flex; gap: 12px; flex-wrap: wrap;
-      align-items: center; justify-content: space-between;
-      padding: 12px 16px; border-radius: 10px;
-      border: 1px solid rgba(127,127,127,.35);
-      margin: 12px 0 20px 0;
-    }
-
-    .pcn {
-      display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
-    }
-    .pcn a, .pcn button {
-      border: 1px solid rgba(127,127,127,.45);
-      background: transparent;
-      padding: 8px 12px;
-      border-radius: 8px;
-      cursor: pointer;
-      text-decoration: none;
-      color: inherit;
-      font: inherit;
-    }
-    .pcn a[aria-disabled="true"], .pcn button:disabled {
-      opacity: 0.5; cursor: not-allowed;
-    }
-    .pcn .current {
-      padding: 8px 12px;
-      border-radius: 8px;
-      border: 1px dashed rgba(127,127,127,.45);
-      opacity: 0.9;
-      white-space: nowrap;
-    }
-
-    .grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-      gap: 14px;
-    }
-    .card {
-      border: 1px solid rgba(127,127,127,.35);
-      border-radius: 12px;
-      padding: 14px;
-    }
-    .card h2 { margin: 0 0 8px 0; font-size: 18px; }
-    .card p { margin: 0 0 10px 0; opacity: 0.85; }
-    .card a { text-decoration: none; }
-    .muted { opacity: 0.7; }
-
-    .hidden { display: none !important; }
-    footer { opacity: 0.7; font-size: 13px; padding-bottom: 30px; }
+    body{font-family:system-ui,Arial;margin:20px}
+    button{font-size:16px;padding:10px 14px;margin:6px 6px 6px 0;cursor:pointer}
+    #status{margin-top:12px;padding:10px;background:#111;color:#fff;display:inline-block;border-radius:8px}
+    #small{opacity:.75;margin-top:10px;max-width:900px}
+    input{font-size:16px;padding:8px;width:90px}
   </style>
 </head>
-
 <body>
-  <header>
-    <h1>My GitHub Page</h1>
-    <p class="sub">Welcome — this page includes a safe Previous / Current / Next control.</p>
-  </header>
+  <h2>Sherkston Listing Display (Actual Website Pages)</h2>
 
-  <main>
-    <!-- TOOLBAR (includes Prev/Current/Next) -->
-    <section class="toolbar" aria-label="Page tools">
-      <div class="pcn" id="pcnNav">
-        <!-- Using buttons so this works even if you’re not actually changing pages -->
-        <button id="pcnPrev" type="button">Previous</button>
-        <span class="current" id="pcnCurrent">Current: Home</span>
-        <button id="pcnNext" type="button">Next</button>
-      </div>
+  <div>
+    Rotate every
+    <input id="sec" type="number" min="5" value="25" />
+    seconds
+  </div>
 
-      <div class="muted" id="statusText" aria-live="polite"></div>
-    </section>
+  <div style="margin-top:10px">
+    <button id="start">Start Display Window</button>
+    <button id="pause">Pause</button>
+    <button id="next">Next</button>
+    <button id="shuffle">Shuffle</button>
+    <button id="reopen">Re-open Display Window</button>
+    <button onclick="window.location.href='custom.html'">Open Custom Display</button>
+  </div>
 
-    <!-- CONTENT -->
-    <section class="grid" id="cards">
-      <article class="card">
-        <h2>Section 1</h2>
-        <p>Put your real content here (links, images, whatever).</p>
-        <a href="#" class="muted">Example link</a>
-      </article>
+  <div id="status">Loading listings…</div>
+  <div id="countdown" style="margin-top:10px;font-size:16px;">
+    Next in: <strong><span id="countdownValue">--</span></strong>s
+  </div>
+  
+<div id="queue" style="margin-top:12px; padding:10px; border:1px solid #ddd; border-radius:10px; max-width:1000px;">
+  <div>
+    <strong>Previous Viewed:</strong>
+    <a href="#" id="prevItem" style="margin-left:6px;"></a>
+  </div>
+  <div style="margin-top:6px;">
+    <strong>Current Viewing:</strong>
+    <span id="currItem">—</span>
+  </div>
+  <div style="margin-top:6px;">
+    <strong>Next Up:</strong>
+    <a href="#" id="nextItem" style="margin-left:6px;"></a>
+  </div>
+</div>
+  
+  <div id="small">
+    Notes:
+    <ul>
+      <li>You must allow popups for this site (one-time) or the display window can’t open.</li>
+      <li>This shows the real SunOutdoors listing pages (full page), not an embedded frame.</li>
+      <li>Keyboard: Space = Pause/Play, → = Next, R = Shuffle</li>
+    </ul>
+  </div>
 
-      <article class="card">
-        <h2>Section 2</h2>
-        <p>Another card/section you can customize.</p>
-        <a href="#" class="muted">Example link</a>
-      </article>
+<script>
+let listings = [];
+let order = [];
+let idx = 0;
+let paused = false;
+let timer = null;
+let displayWin = null;
+  
+let nextAt = 0;
+let countdownTimer = null;
 
-      <article class="card">
-        <h2>Section 3</h2>
-        <p>This template won’t crash if you remove the nav.</p>
-        <a href="#" class="muted">Example link</a>
-      </article>
-    </section>
-  </main>
+const countdownValueEl = document.getElementById('countdownValue');
 
-  <footer>
-    <div>© <span id="year"></span> — Hosted on GitHub Pages</div>
-  </footer>
+const statusEl = document.getElementById('status');
+const secEl = document.getElementById('sec');
 
-  <script>
-    // ==============
-    // SAFE PAGE JS
-    // ==============
-    document.addEventListener("DOMContentLoaded", () => {
-      // Always-safe footer year
-      const yearEl = document.getElementById("year");
-      if (yearEl) yearEl.textContent = String(new Date().getFullYear());
+const prevItemEl = document.getElementById('prevItem');
+const currItemEl = document.getElementById('currItem');
+const nextItemEl = document.getElementById('nextItem');
 
-      // Toggle this to instantly “revert” the Prev/Current/Next UI without touching HTML
-      const ENABLE_PCN = true;
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
 
-      const pcnNav = document.getElementById("pcnNav");
-      const prevBtn = document.getElementById("pcnPrev");
-      const nextBtn = document.getElementById("pcnNext");
-      const currentEl = document.getElementById("pcnCurrent");
-      const statusText = document.getElementById("statusText");
+function updateQueue(){
+  if (!order.length) return;
 
-      // If disabled or missing elements, do NOT break page — just hide nav
-      if (!ENABLE_PCN || !pcnNav || !prevBtn || !nextBtn || !currentEl) {
-        if (pcnNav) pcnNav.classList.add("hidden");
-        return;
-      }
+  const prevIdx = (idx - 1 + order.length) % order.length;
+  const nextIdx = (idx + 1) % order.length;
 
-      // Example “steps” — replace these with your real pages/sections if you want
-      const steps = [
-        { label: "Home", action: () => setStatus("You’re on Home.") },
-        { label: "Projects", action: () => setStatus("You’re viewing Projects.") },
-        { label: "Contact", action: () => setStatus("You’re viewing Contact.") }
-      ];
+  // Set text
+  prevItemEl.textContent = order[prevIdx];
+  currItemEl.textContent = order[idx];
+  nextItemEl.textContent = order[nextIdx];
 
-      let idx = 0;
+  // Wire clicks
+  prevItemEl.onclick = (e) => {
+    e.preventDefault();
+    idx = prevIdx;
+    show();
+    startTimer();
+  };
 
-      function setStatus(msg) {
-        if (statusText) statusText.textContent = msg || "";
-      }
+  nextItemEl.onclick = (e) => {
+    e.preventDefault();
+    idx = nextIdx;
+    show();
+    startTimer();
+  };
+}
 
-      function render() {
-        const label = steps[idx]?.label ?? "Home";
-        currentEl.textContent = "Current: " + label;
 
-        // Disable edges
-        prevBtn.disabled = idx <= 0;
-        nextBtn.disabled = idx >= steps.length - 1;
+  
+function openOrFocusDisplayWindow(){
+  // Try to reuse existing window
+  if (displayWin && !displayWin.closed) {
+    displayWin.focus();
+    return true;
+  }
+  // Open a blank window we control, then we navigate it
+  displayWin = window.open('about:blank', 'SherkstonListingDisplay');
+  if (!displayWin) return false;
+  displayWin.document.write('<title>Listings Display</title><body style="font-family:system-ui;margin:20px">Loading…</body>');
+  displayWin.focus();
+  return true;
+}
 
-        // Run the step action safely
-        try {
-          const fn = steps[idx]?.action;
-          if (typeof fn === "function") fn();
-        } catch (e) {
-          // Don’t crash the page if your step logic throws
-          console.warn("Step action failed:", e);
-          setStatus("Navigation loaded (with a warning).");
-        }
-      }
+function show(){
+  if (!order.length) return;
 
-      prevBtn.addEventListener("click", () => {
-        if (idx > 0) idx--;
-        render();
-      });
+  const url = order[idx];
+  if (!openOrFocusDisplayWindow()){
+    statusEl.textContent = 'Popup blocked. Allow popups for this site, then click "Re-open Display Window".';
+    return;
+  }
+  // Navigate the display window to the real listing page (cross-origin navigation is allowed)
+  displayWin.location.href = url;
 
-      nextBtn.addEventListener("click", () => {
-        if (idx < steps.length - 1) idx++;
-        render();
-      });
+  statusEl.textContent =
+    (paused ? 'Paused' : 'Playing') +
+    ` | ${idx+1}/${order.length} | ` + url;
+}
 
-      render();
-    });
-  </script>
+function next(){
+  if (!order.length) return;
+  idx = (idx + 1) % order.length;
+  show();
+}
+
+function startTimer(){
+  const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
+  clearInterval(timer);
+  clearInterval(countdownTimer);
+
+  // set the "next change" time
+  nextAt = Date.now() + seconds * 1000;
+
+  // main rotation timer
+  timer = setInterval(() => {
+    if (paused) return;
+    next();
+    nextAt = Date.now() + seconds * 1000;
+  }, seconds * 1000);
+
+  // countdown updater (smooth display)
+  countdownTimer = setInterval(() => {
+    const remainingMs = Math.max(0, nextAt - Date.now());
+    const remainingSec = Math.ceil(remainingMs / 1000);
+    countdownValueEl.textContent = paused ? 'PAUSED' : String(remainingSec);
+  }, 200);
+}
+
+
+document.getElementById('start').addEventListener('click', () => {
+  paused = false;
+  openOrFocusDisplayWindow();
+  show();
+  startTimer();
+});
+
+document.getElementById('reopen').addEventListener('click', () => {
+  openOrFocusDisplayWindow();
+  show();
+});
+
+document.getElementById('pause').addEventListener('click', () => {
+  paused = !paused;
+  document.getElementById('pause').textContent = paused ? 'Play' : 'Pause';
+
+  // When unpausing, restart the countdown fresh
+  if (!paused) {
+    const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
+    nextAt = Date.now() + seconds * 1000;
+  }
+  show();
+});
+
+
+document.getElementById('next').addEventListener('click', () => {
+  next();
+});
+
+document.getElementById('shuffle').addEventListener('click', () => {
+  order = shuffle(listings);
+  idx = 0;
+  show();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') { paused = !paused; show(); }
+  if (e.code === 'ArrowRight') next();
+  if (e.key === 'r' || e.key === 'R') { order = shuffle(listings); idx = 0; show(); }
+});
+
+function applyNewInterval(){
+  // restart timers using the new value
+  startTimer();
+}
+
+// Fires as you type / use arrow buttons
+secEl.addEventListener('input', () => {
+  if (!order.length) return;     // don’t run before listings loaded
+  applyNewInterval();
+});
+
+// Also fires when you click away (backup)
+secEl.addEventListener('change', () => {
+  if (!order.length) return;
+  applyNewInterval();
+});
+
+  
+fetch('./listings.json', { cache: 'no-store' })
+  .then(r => r.json())
+  .then(d => {
+    listings = d.listings || [];
+    if (!listings.length){
+      statusEl.textContent = 'No listings found in listings.json yet.';
+      return;
+    }
+    order = shuffle(listings);
+    idx = 0;
+    statusEl.textContent = `Loaded ${order.length} listings. Click "Start Display Window".`;
+  })
+  .catch(err => {
+    statusEl.textContent = 'Error loading listings.json';
+    console.log(err);
+  });
+</script>
 </body>
 </html>
