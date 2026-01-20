@@ -5,7 +5,6 @@ const START_URL =
   "https://www.sunoutdoors.com/ontario/sun-retreats-sherkston-shores/vacation-home-sales";
 
 async function tryClickCookieOrModalButtons(page) {
-  // Common cookie/consent / modal close patterns
   const selectors = [
     'button:has-text("Accept")',
     'button:has-text("I Accept")',
@@ -28,12 +27,10 @@ async function tryClickCookieOrModalButtons(page) {
 }
 
 async function getUrlsFromDom(page) {
-  // Best source: hidden data-url
   const fromData = await page.$$eval(".storemapdata[data-url]", (els) =>
     els.map((e) => e.getAttribute("data-url")).filter(Boolean)
   );
 
-  // Backup: See details buttons
   const fromButtons = await page.$$eval("a.seeDetailsDL[href]", (els) =>
     els.map((e) => e.href).filter(Boolean)
   );
@@ -42,12 +39,10 @@ async function getUrlsFromDom(page) {
 }
 
 async function clickNext(page) {
-  // Your pagination uses class="page-link next"
   const sel = "a.page-link.next";
   const next = await page.$(sel);
   if (!next) return false;
 
-  // stop if disabled-ish
   const ariaDisabled = await next.getAttribute("aria-disabled");
   const disabledAttr = await next.getAttribute("disabled");
   const className = (await next.getAttribute("class")) || "";
@@ -69,19 +64,15 @@ async function clickNext(page) {
     locale: "en-CA"
   });
 
-  // Be a little more “real browser”-like
   await page.setExtraHTTPHeaders({
     "Accept-Language": "en-CA,en;q=0.9"
   });
 
   await page.goto(START_URL, { waitUntil: "domcontentloaded" });
 
-  // Give the JS app time to boot and make API calls
   await page.waitForTimeout(3000);
   await tryClickCookieOrModalButtons(page);
 
-  // Wait for the listing container to ATTACH (not necessarily visible)
-  // If the site renders offscreen or hidden briefly, "visible" can time out.
   const selector = ".dh-property-list, .storemapdata[data-url], a.seeDetailsDL";
 
   let found = false;
@@ -91,7 +82,6 @@ async function clickNext(page) {
       found = true;
       break;
     } catch {
-      // Sometimes it needs a nudge: scroll and wait again
       await page.mouse.wheel(0, 800).catch(() => {});
       await page.waitForTimeout(2000);
       await tryClickCookieOrModalButtons(page);
@@ -99,4 +89,60 @@ async function clickNext(page) {
   }
 
   if (!found) {
-    /
+    const html = await page.content();
+    fs.mkdirSync("docs", { recursive: true });
+    fs.writeFileSync("docs/debug.html", html, "utf-8");
+
+    const outEmpty = {
+      updatedAt: new Date().toISOString(),
+      source: START_URL,
+      pagesVisited: 0,
+      count: 0,
+      listings: [],
+      note:
+        "No listing elements detected in GitHub runner. Saved docs/debug.html for inspection."
+    };
+
+    fs.writeFileSync("docs/listings.json", JSON.stringify(outEmpty, null, 2), "utf-8");
+    await browser.close();
+    console.log("No listing elements found. Wrote docs/debug.html and empty docs/listings.json");
+    process.exit(0);
+  }
+
+  const listingUrls = new Set();
+  let pagesVisited = 0;
+
+  for (let i = 0; i < 120; i++) {
+    pagesVisited++;
+
+    const urls = await getUrlsFromDom(page);
+    urls.forEach((u) => listingUrls.add(u));
+
+    const before = listingUrls.size;
+    const clicked = await clickNext(page);
+    if (!clicked) break;
+
+    await page.waitForTimeout(1200);
+    await page.waitForLoadState("domcontentloaded").catch(() => {});
+    await tryClickCookieOrModalButtons(page);
+    await page.waitForTimeout(1200);
+
+    const after = listingUrls.size;
+    if (i >= 2 && after === before) break;
+  }
+
+  await browser.close();
+
+  const out = {
+    updatedAt: new Date().toISOString(),
+    source: START_URL,
+    pagesVisited,
+    count: listingUrls.size,
+    listings: Array.from(listingUrls)
+  };
+
+  fs.mkdirSync("docs", { recursive: true });
+  fs.writeFileSync("docs/listings.json", JSON.stringify(out, null, 2), "utf-8");
+
+  console.log(`Visited ${pagesVisited} pages, saved ${out.count} listing URLs.`);
+})();
