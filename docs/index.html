@@ -30,7 +30,11 @@
   </div>
 
   <div id="status">Loading listings…</div>
+  <div id="countdown" style="margin-top:10px;font-size:16px;">
+    Next in: <strong><span id="countdownValue">--</span></strong>s
+  </div>
 
+  
   <div id="small">
     Notes:
     <ul>
@@ -47,6 +51,12 @@ let idx = 0;
 let paused = false;
 let timer = null;
 let displayWin = null;
+  
+let nextAt = 0;
+let countdownTimer = null;
+
+const countdownValueEl = document.getElementById('countdownValue');
+
 
 const statusEl = document.getElementById('status');
 const secEl = document.getElementById('sec');
@@ -99,8 +109,26 @@ function next(){
 function startTimer(){
   const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
   clearInterval(timer);
-  timer = setInterval(() => { if (!paused) next(); }, seconds * 1000);
+  clearInterval(countdownTimer);
+
+  // set the "next change" time
+  nextAt = Date.now() + seconds * 1000;
+
+  // main rotation timer
+  timer = setInterval(() => {
+    if (paused) return;
+    next();
+    nextAt = Date.now() + seconds * 1000;
+  }, seconds * 1000);
+
+  // countdown updater (smooth display)
+  countdownTimer = setInterval(() => {
+    const remainingMs = Math.max(0, nextAt - Date.now());
+    const remainingSec = Math.ceil(remainingMs / 1000);
+    countdownValueEl.textContent = paused ? 'PAUSED' : String(remainingSec);
+  }, 200);
 }
+
 
 document.getElementById('start').addEventListener('click', () => {
   paused = false;
@@ -116,8 +144,16 @@ document.getElementById('reopen').addEventListener('click', () => {
 
 document.getElementById('pause').addEventListener('click', () => {
   paused = !paused;
+  document.getElementById('pause').textContent = paused ? 'Play' : 'Pause';
+
+  // When unpausing, restart the countdown fresh
+  if (!paused) {
+    const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
+    nextAt = Date.now() + seconds * 1000;
+  }
   show();
 });
+
 
 document.getElementById('next').addEventListener('click', () => {
   next();
