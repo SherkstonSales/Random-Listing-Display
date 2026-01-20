@@ -226,7 +226,7 @@ document.getElementById('next').addEventListener('click', () => {
   next();
 
   // restart the timer/countdown from "now"
-  const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
+  const seconds = Math.max(5, parseInt(secEl.value || '60', 10));
   nextAt = Date.now() + seconds * 1000;
 });
 
@@ -243,14 +243,14 @@ document.addEventListener('keydown', (e) => {
     paused = !paused;
     document.getElementById('pause').textContent = paused ? 'Play' : 'Pause';
     if (!paused) {
-      const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
+      const seconds = Math.max(5, parseInt(secEl.value || '60', 10));
       nextAt = Date.now() + seconds * 1000;
     }
     show();
   }
   if (e.code === 'ArrowRight') {
     next();
-    const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
+    const seconds = Math.max(5, parseInt(secEl.value || '60', 10));
     nextAt = Date.now() + seconds * 1000;
   }
   if (e.key === 'r' || e.key === 'R') { order = shuffle(listings); idx = 0; show(); }
