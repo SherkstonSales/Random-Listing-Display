@@ -33,22 +33,22 @@
   <div id="countdown" style="margin-top:10px;font-size:16px;">
     Next in: <strong><span id="countdownValue">--</span></strong>s
   </div>
-  
-<div id="queue" style="margin-top:12px; padding:10px; border:1px solid #ddd; border-radius:10px; max-width:1000px;">
-  <div>
-    <strong>Previous Viewed:</strong>
-    <a href="#" id="prevItem" style="margin-left:6px;"></a>
+
+  <div id="queue" style="margin-top:12px; padding:10px; border:1px solid #ddd; border-radius:10px; max-width:1000px;">
+    <div>
+      <strong>Previous Viewed:</strong>
+      <a href="#" id="prevItem" style="margin-left:6px;"></a>
+    </div>
+    <div style="margin-top:6px;">
+      <strong>Current Viewing:</strong>
+      <span id="currItem">—</span>
+    </div>
+    <div style="margin-top:6px;">
+      <strong>Next Up:</strong>
+      <a href="#" id="nextItem" style="margin-left:6px;"></a>
+    </div>
   </div>
-  <div style="margin-top:6px;">
-    <strong>Current Viewing:</strong>
-    <span id="currItem">—</span>
-  </div>
-  <div style="margin-top:6px;">
-    <strong>Next Up:</strong>
-    <a href="#" id="nextItem" style="margin-left:6px;"></a>
-  </div>
-</div>
-  
+
   <div id="small">
     Notes:
     <ul>
@@ -65,7 +65,7 @@ let idx = 0;
 let paused = false;
 let timer = null;
 let displayWin = null;
-  
+
 let nextAt = 0;
 let countdownTimer = null;
 
@@ -87,18 +87,38 @@ function shuffle(arr){
   return a;
 }
 
+// Optional: make the queue text nicer than a full URL
+function shortLabel(url){
+  try {
+    const u = new URL(url);
+    // keep host + last path segment (usually enough)
+    const last = u.pathname.split('/').filter(Boolean).pop() || u.hostname;
+    return `${u.hostname}/${last}`;
+  } catch {
+    return url;
+  }
+}
+
 function updateQueue(){
   if (!order.length) return;
 
   const prevIdx = (idx - 1 + order.length) % order.length;
   const nextIdx = (idx + 1) % order.length;
 
-  // Set text
-  prevItemEl.textContent = order[prevIdx];
-  currItemEl.textContent = order[idx];
-  nextItemEl.textContent = order[nextIdx];
+  const prevUrl = order[prevIdx];
+  const currUrl = order[idx];
+  const nextUrl = order[nextIdx];
 
-  // Wire clicks
+  // Text
+  prevItemEl.textContent = shortLabel(prevUrl);
+  currItemEl.textContent = shortLabel(currUrl);
+  nextItemEl.textContent = shortLabel(nextUrl);
+
+  // Hrefs (so they're real links)
+  prevItemEl.href = prevUrl;
+  nextItemEl.href = nextUrl;
+
+  // Wire clicks to jump (keep your popup display behavior)
   prevItemEl.onclick = (e) => {
     e.preventDefault();
     idx = prevIdx;
@@ -114,8 +134,6 @@ function updateQueue(){
   };
 }
 
-
-  
 function openOrFocusDisplayWindow(){
   // Try to reuse existing window
   if (displayWin && !displayWin.closed) {
@@ -134,10 +152,15 @@ function show(){
   if (!order.length) return;
 
   const url = order[idx];
+
+  // Update the queue display every time we show something
+  updateQueue();
+
   if (!openOrFocusDisplayWindow()){
     statusEl.textContent = 'Popup blocked. Allow popups for this site, then click "Re-open Display Window".';
     return;
   }
+
   // Navigate the display window to the real listing page (cross-origin navigation is allowed)
   displayWin.location.href = url;
 
@@ -175,9 +198,9 @@ function startTimer(){
   }, 200);
 }
 
-
 document.getElementById('start').addEventListener('click', () => {
   paused = false;
+  document.getElementById('pause').textContent = 'Pause';
   openOrFocusDisplayWindow();
   show();
   startTimer();
@@ -192,65 +215,4 @@ document.getElementById('pause').addEventListener('click', () => {
   paused = !paused;
   document.getElementById('pause').textContent = paused ? 'Play' : 'Pause';
 
-  // When unpausing, restart the countdown fresh
-  if (!paused) {
-    const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
-    nextAt = Date.now() + seconds * 1000;
-  }
-  show();
-});
-
-
-document.getElementById('next').addEventListener('click', () => {
-  next();
-});
-
-document.getElementById('shuffle').addEventListener('click', () => {
-  order = shuffle(listings);
-  idx = 0;
-  show();
-});
-
-document.addEventListener('keydown', (e) => {
-  if (e.code === 'Space') { paused = !paused; show(); }
-  if (e.code === 'ArrowRight') next();
-  if (e.key === 'r' || e.key === 'R') { order = shuffle(listings); idx = 0; show(); }
-});
-
-function applyNewInterval(){
-  // restart timers using the new value
-  startTimer();
-}
-
-// Fires as you type / use arrow buttons
-secEl.addEventListener('input', () => {
-  if (!order.length) return;     // don’t run before listings loaded
-  applyNewInterval();
-});
-
-// Also fires when you click away (backup)
-secEl.addEventListener('change', () => {
-  if (!order.length) return;
-  applyNewInterval();
-});
-
-  
-fetch('./listings.json', { cache: 'no-store' })
-  .then(r => r.json())
-  .then(d => {
-    listings = d.listings || [];
-    if (!listings.length){
-      statusEl.textContent = 'No listings found in listings.json yet.';
-      return;
-    }
-    order = shuffle(listings);
-    idx = 0;
-    statusEl.textContent = `Loaded ${order.length} listings. Click "Start Display Window".`;
-  })
-  .catch(err => {
-    statusEl.textContent = 'Error loading listings.json';
-    console.log(err);
-  });
-</script>
-</body>
-</html>
+  // When unpausing, restart the countdown fr
