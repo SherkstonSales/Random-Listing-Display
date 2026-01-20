@@ -3,102 +3,173 @@
 <head>
   <meta charset="utf-8" />
   <title>Sherkston Listings Display</title>
+
   <style>
-    body{font-family:system-ui,Arial;margin:20px}
-    button{font-size:16px;padding:10px 14px;margin:6px 6px 6px 0;cursor:pointer}
-    #status{margin-top:12px;padding:10px;background:#111;color:#fff;display:inline-block;border-radius:8px}
-    #small{opacity:.75;margin-top:10px;max-width:900px}
-    input{font-size:16px;padding:8px;width:90px}
+    body {
+      font-family: system-ui, Arial;
+      margin: 20px;
+      background: #f6f6f6;
+    }
+
+    button {
+      font-size: 16px;
+      padding: 10px 14px;
+      margin: 6px 6px 6px 0;
+      cursor: pointer;
+    }
+
+    input {
+      font-size: 16px;
+      padding: 8px;
+      width: 90px;
+    }
+
+    #status {
+      margin-top: 12px;
+      padding: 10px;
+      background: #111;
+      color: #fff;
+      display: inline-block;
+      border-radius: 8px;
+    }
+
+    #queue {
+      margin-top: 14px;
+      padding: 12px;
+      border: 1px solid #ccc;
+      border-radius: 10px;
+      max-width: 1100px;
+      background: #fff;
+    }
+
+    #queue div {
+      margin-top: 6px;
+    }
+
+    #queue a {
+      color: #0066cc;
+      text-decoration: none;
+      word-break: break-all;
+    }
+
+    #queue a:hover {
+      text-decoration: underline;
+    }
+
+    #countdown {
+      margin-top: 10px;
+      font-size: 16px;
+    }
+
+    #small {
+      opacity: .75;
+      margin-top: 14px;
+      max-width: 900px;
+    }
   </style>
 </head>
+
 <body>
-  <h2>Sherkston Listing Display (Actual Website Pages)</h2>
 
-  <div>
-    Rotate every
-    <input id="sec" type="number" min="5" value="25" />
-    seconds
-  </div>
+<h2>Sherkston Listing Display (Controller)</h2>
 
-  <div style="margin-top:10px">
-    <button id="start">Start Display Window</button>
-    <button id="pause">Pause</button>
-    <button id="next">Next</button>
-    <button id="shuffle">Shuffle</button>
-    <button id="reopen">Re-open Display Window</button>
-    <button onclick="window.location.href='custom.html'">Open Custom Display</button>
-  </div>
+<div>
+  Rotate every
+  <input id="sec" type="number" min="5" value="25" />
+  seconds
+</div>
 
-  <div id="status">Loading listings…</div>
-  <div id="countdown" style="margin-top:10px;font-size:16px;">
-    Next in: <strong><span id="countdownValue">--</span></strong>s
-  </div>
-  
-<div id="queue" style="margin-top:12px; padding:10px; border:1px solid #ddd; border-radius:10px; max-width:1000px;">
+<div style="margin-top:10px">
+  <button id="start">Start Display Window</button>
+  <button id="pause">Pause</button>
+  <button id="next">Next</button>
+  <button id="shuffle">Shuffle</button>
+  <button id="reopen">Re-open Display Window</button>
+  <button onclick="window.location.href='custom.html'">Open Custom Display</button>
+</div>
+
+<div id="status">Loading listings…</div>
+
+<div id="countdown">
+  Next in: <strong><span id="countdownValue">--</span></strong>
+</div>
+
+<div id="queue">
   <div>
     <strong>Previous Viewed:</strong>
-    <a href="#" id="prevItem" style="margin-left:6px;"></a>
+    <a href="#" id="prevItem">—</a>
   </div>
-  <div style="margin-top:6px;">
+  <div>
     <strong>Current Viewing:</strong>
     <span id="currItem">—</span>
   </div>
-  <div style="margin-top:6px;">
+  <div>
     <strong>Next Up:</strong>
-    <a href="#" id="nextItem" style="margin-left:6px;"></a>
+    <a href="#" id="nextItem">—</a>
   </div>
 </div>
-  
-  <div id="small">
-    Notes:
-    <ul>
-      <li>You must allow popups for this site (one-time) or the display window can’t open.</li>
-      <li>This shows the real SunOutdoors listing pages (full page), not an embedded frame.</li>
-      <li>Keyboard: Space = Pause/Play, → = Next, R = Shuffle</li>
-    </ul>
-  </div>
+
+<div id="small">
+  Notes:
+  <ul>
+    <li>Allow popups once so the display window can open.</li>
+    <li>Keyboard: Space = Pause / Play · → = Next · R = Shuffle</li>
+  </ul>
+</div>
 
 <script>
+/* ------------------ STATE ------------------ */
 let listings = [];
 let order = [];
 let idx = 0;
 let paused = false;
 let timer = null;
-let displayWin = null;
-  
-let nextAt = 0;
 let countdownTimer = null;
+let nextAt = 0;
+let displayWin = null;
 
-const countdownValueEl = document.getElementById('countdownValue');
-
+/* ------------------ ELEMENTS ------------------ */
 const statusEl = document.getElementById('status');
 const secEl = document.getElementById('sec');
+const countdownValueEl = document.getElementById('countdownValue');
 
 const prevItemEl = document.getElementById('prevItem');
 const currItemEl = document.getElementById('currItem');
 const nextItemEl = document.getElementById('nextItem');
 
-function shuffle(arr){
+/* ------------------ HELPERS ------------------ */
+function shuffle(arr) {
   const a = arr.slice();
-  for(let i=a.length-1;i>0;i--){
-    const j = Math.floor(Math.random()*(i+1));
-    [a[i],a[j]] = [a[j],a[i]];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
   }
   return a;
 }
 
-function updateQueue(){
+function openOrFocusDisplayWindow() {
+  if (displayWin && !displayWin.closed) {
+    displayWin.focus();
+    return true;
+  }
+  displayWin = window.open('about:blank', 'SherkstonListingDisplay');
+  if (!displayWin) return false;
+  displayWin.document.write('<title>Listing Display</title><body>Loading…</body>');
+  displayWin.focus();
+  return true;
+}
+
+/* ------------------ QUEUE DISPLAY ------------------ */
+function updateQueue() {
   if (!order.length) return;
 
   const prevIdx = (idx - 1 + order.length) % order.length;
   const nextIdx = (idx + 1) % order.length;
 
-  // Set text
   prevItemEl.textContent = order[prevIdx];
   currItemEl.textContent = order[idx];
   nextItemEl.textContent = order[nextIdx];
 
-  // Wire clicks
   prevItemEl.onclick = (e) => {
     e.preventDefault();
     idx = prevIdx;
@@ -114,143 +185,50 @@ function updateQueue(){
   };
 }
 
-
-  
-function openOrFocusDisplayWindow(){
-  // Try to reuse existing window
-  if (displayWin && !displayWin.closed) {
-    displayWin.focus();
-    return true;
-  }
-  // Open a blank window we control, then we navigate it
-  displayWin = window.open('about:blank', 'SherkstonListingDisplay');
-  if (!displayWin) return false;
-  displayWin.document.write('<title>Listings Display</title><body style="font-family:system-ui;margin:20px">Loading…</body>');
-  displayWin.focus();
-  return true;
-}
-
-function show(){
+/* ------------------ DISPLAY ------------------ */
+function show() {
   if (!order.length) return;
 
   const url = order[idx];
-  if (!openOrFocusDisplayWindow()){
-    statusEl.textContent = 'Popup blocked. Allow popups for this site, then click "Re-open Display Window".';
+
+  if (!openOrFocusDisplayWindow()) {
+    statusEl.textContent = 'Popup blocked. Allow popups and try again.';
     return;
   }
-  // Navigate the display window to the real listing page (cross-origin navigation is allowed)
+
   displayWin.location.href = url;
 
   statusEl.textContent =
     (paused ? 'Paused' : 'Playing') +
-    ` | ${idx+1}/${order.length} | ` + url;
+    ` | ${idx + 1}/${order.length} | ${url}`;
+
+  updateQueue();
 }
 
-function next(){
+function next() {
   if (!order.length) return;
   idx = (idx + 1) % order.length;
   show();
 }
 
-function startTimer(){
+/* ------------------ TIMERS ------------------ */
+function startTimer() {
   const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
+
   clearInterval(timer);
   clearInterval(countdownTimer);
 
-  // set the "next change" time
   nextAt = Date.now() + seconds * 1000;
 
-  // main rotation timer
   timer = setInterval(() => {
     if (paused) return;
     next();
     nextAt = Date.now() + seconds * 1000;
   }, seconds * 1000);
 
-  // countdown updater (smooth display)
   countdownTimer = setInterval(() => {
-    const remainingMs = Math.max(0, nextAt - Date.now());
-    const remainingSec = Math.ceil(remainingMs / 1000);
-    countdownValueEl.textContent = paused ? 'PAUSED' : String(remainingSec);
-  }, 200);
-}
-
-
-document.getElementById('start').addEventListener('click', () => {
-  paused = false;
-  openOrFocusDisplayWindow();
-  show();
-  startTimer();
-});
-
-document.getElementById('reopen').addEventListener('click', () => {
-  openOrFocusDisplayWindow();
-  show();
-});
-
-document.getElementById('pause').addEventListener('click', () => {
-  paused = !paused;
-  document.getElementById('pause').textContent = paused ? 'Play' : 'Pause';
-
-  // When unpausing, restart the countdown fresh
-  if (!paused) {
-    const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
-    nextAt = Date.now() + seconds * 1000;
-  }
-  show();
-});
-
-
-document.getElementById('next').addEventListener('click', () => {
-  next();
-});
-
-document.getElementById('shuffle').addEventListener('click', () => {
-  order = shuffle(listings);
-  idx = 0;
-  show();
-});
-
-document.addEventListener('keydown', (e) => {
-  if (e.code === 'Space') { paused = !paused; show(); }
-  if (e.code === 'ArrowRight') next();
-  if (e.key === 'r' || e.key === 'R') { order = shuffle(listings); idx = 0; show(); }
-});
-
-function applyNewInterval(){
-  // restart timers using the new value
-  startTimer();
-}
-
-// Fires as you type / use arrow buttons
-secEl.addEventListener('input', () => {
-  if (!order.length) return;     // don’t run before listings loaded
-  applyNewInterval();
-});
-
-// Also fires when you click away (backup)
-secEl.addEventListener('change', () => {
-  if (!order.length) return;
-  applyNewInterval();
-});
-
-  
-fetch('./listings.json', { cache: 'no-store' })
-  .then(r => r.json())
-  .then(d => {
-    listings = d.listings || [];
-    if (!listings.length){
-      statusEl.textContent = 'No listings found in listings.json yet.';
+    if (paused) {
+      countdownValueEl.textContent = 'PAUSED';
       return;
     }
-    order = shuffle(listings);
-    idx = 0;
-    statusEl.textContent = `Loaded ${order.length} listings. Click "Start Display Window".`;
-  })
-  .catch(err => {
-    statusEl.textContent = 'Error loading listings.json';
-    console.log(err);
-  });
-</script>
-</body>
-</html>
+    const remaining = Math.max(0, Math.ceil((nextAt - Date.now())
