@@ -13,15 +13,13 @@ async function tryClickCookieOrModalButtons(page) {
     'button:has-text("OK")',
     'button:has-text("Got it")',
     'button[aria-label="Close"]',
-    'button:has-text("Close")',
-    'a:has-text("Accept")'
+    'button:has-text("Close")'
   ];
-
   for (const sel of selectors) {
     const el = await page.$(sel);
     if (el) {
       await el.click().catch(() => {});
-      await page.waitForTimeout(600);
+      await page.waitForTimeout(500);
     }
   }
 }
@@ -30,28 +28,43 @@ async function getUrlsFromDom(page) {
   const fromData = await page.$$eval(".storemapdata[data-url]", (els) =>
     els.map((e) => e.getAttribute("data-url")).filter(Boolean)
   );
-
   const fromButtons = await page.$$eval("a.seeDetailsDL[href]", (els) =>
     els.map((e) => e.href).filter(Boolean)
   );
-
   return [...fromData, ...fromButtons];
 }
 
-async function clickNext(page) {
-  const sel = "a.page-link.next";
-  const next = await page.$(sel);
-  if (!next) return false;
+async function waitForListings(page) {
+  await page.waitForSelector(".storemapdata[data-url], a.seeDetailsDL", {
+    timeout: 60000,
+    state: "attached"
+  });
+}
 
-  const ariaDisabled = await next.getAttribute("aria-disabled");
-  const disabledAttr = await next.getAttribute("disabled");
-  const className = (await next.getAttribute("class")) || "";
+async function getTotalPages(page) {
+  // Try to read the largest numbered page link
+  const nums = await page.$$eval("a.page-link", (els) => {
+    const out = [];
+    for (const a of els) {
+      const t = (a.textContent || "").trim();
+      if (/^\d+$/.test(t)) out.push(parseInt(t, 10));
+    }
+    return out;
+  });
+  return nums.length ? Math.max(...nums) : 1;
+}
 
-  if (ariaDisabled === "true" || disabledAttr !== null || className.includes("disabled")) {
-    return false;
-  }
+async function clickPageNumber(page, n) {
+  // Click the numbered page link like <a class="page-link">2</a>
+  const locator = page.locator("a.page-link", { hasText: String(n) }).first();
 
-  await next.click().catch(() => {});
+  // Ensure it exists
+  const count = await locator.count();
+  if (!count) return false;
+
+  // Scroll into view & click
+  await locator.scrollIntoViewIfNeeded().catch(() => {});
+  await locator.click().catch(() => {});
   return true;
 }
 
@@ -64,71 +77,36 @@ async function clickNext(page) {
     locale: "en-CA"
   });
 
-  await page.setExtraHTTPHeaders({
-    "Accept-Language": "en-CA,en;q=0.9"
-  });
-
   await page.goto(START_URL, { waitUntil: "domcontentloaded" });
-
-  await page.waitForTimeout(3000);
+  await page.waitForTimeout(2500);
   await tryClickCookieOrModalButtons(page);
 
-  const selector = ".dh-property-list, .storemapdata[data-url], a.seeDetailsDL";
+  await waitForListings(page);
 
-  let found = false;
-  for (let attempt = 0; attempt < 6; attempt++) {
-    try {
-      await page.waitForSelector(selector, { timeout: 15000, state: "attached" });
-      found = true;
-      break;
-    } catch {
-      await page.mouse.wheel(0, 800).catch(() => {});
-      await page.waitForTimeout(2000);
-      await tryClickCookieOrModalButtons(page);
-    }
-  }
-
-  if (!found) {
-    const html = await page.content();
-    fs.mkdirSync("docs", { recursive: true });
-    fs.writeFileSync("docs/debug.html", html, "utf-8");
-
-    const outEmpty = {
-      updatedAt: new Date().toISOString(),
-      source: START_URL,
-      pagesVisited: 0,
-      count: 0,
-      listings: [],
-      note:
-        "No listing elements detected in GitHub runner. Saved docs/debug.html for inspection."
-    };
-
-    fs.writeFileSync("docs/listings.json", JSON.stringify(outEmpty, null, 2), "utf-8");
-    await browser.close();
-    console.log("No listing elements found. Wrote docs/debug.html and empty docs/listings.json");
-    process.exit(0);
-  }
-
+  const totalPages = await getTotalPages(page);
   const listingUrls = new Set();
+
   let pagesVisited = 0;
 
-  for (let i = 0; i < 120; i++) {
-    pagesVisited++;
+  // Always scrape page 1 first
+  pagesVisited++;
+  (await getUrlsFromDom(page)).forEach((u) => listingUrls.add(u));
 
-    const urls = await getUrlsFromDom(page);
-    urls.forEach((u) => listingUrls.add(u));
+  // Now go through remaining pages explicitly
+  for (let p = 2; p <= totalPages; p++) {
+    const ok = await clickPageNumber(page, p);
+    if (!ok) break;
 
-    const before = listingUrls.size;
-    const clicked = await clickNext(page);
-    if (!clicked) break;
-
+    // Wait for the listing set to change by waiting a moment + re-attached selector
     await page.waitForTimeout(1200);
-    await page.waitForLoadState("domcontentloaded").catch(() => {});
     await tryClickCookieOrModalButtons(page);
-    await page.waitForTimeout(1200);
+    await waitForListings(page);
 
-    const after = listingUrls.size;
-    if (i >= 2 && after === before) break;
+    pagesVisited++;
+    (await getUrlsFromDom(page)).forEach((u) => listingUrls.add(u));
+
+    // small safety pause so we don't hammer the site
+    await page.waitForTimeout(250);
   }
 
   await browser.close();
@@ -136,6 +114,7 @@ async function clickNext(page) {
   const out = {
     updatedAt: new Date().toISOString(),
     source: START_URL,
+    totalPagesDetected: totalPages,
     pagesVisited,
     count: listingUrls.size,
     listings: Array.from(listingUrls)
@@ -144,5 +123,7 @@ async function clickNext(page) {
   fs.mkdirSync("docs", { recursive: true });
   fs.writeFileSync("docs/listings.json", JSON.stringify(out, null, 2), "utf-8");
 
-  console.log(`Visited ${pagesVisited} pages, saved ${out.count} listing URLs.`);
+  console.log(
+    `Detected ${totalPages} pages. Visited ${pagesVisited}. Saved ${out.count} listing URLs.`
+  );
 })();
