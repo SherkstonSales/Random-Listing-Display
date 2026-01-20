@@ -33,7 +33,21 @@
   <div id="countdown" style="margin-top:10px;font-size:16px;">
     Next in: <strong><span id="countdownValue">--</span></strong>s
   </div>
-
+  
+<div id="queue" style="margin-top:12px; padding:10px; border:1px solid #ddd; border-radius:10px; max-width:1000px;">
+  <div>
+    <strong>Previous Viewed:</strong>
+    <a href="#" id="prevItem" style="margin-left:6px;"></a>
+  </div>
+  <div style="margin-top:6px;">
+    <strong>Current Viewing:</strong>
+    <span id="currItem">—</span>
+  </div>
+  <div style="margin-top:6px;">
+    <strong>Next Up:</strong>
+    <a href="#" id="nextItem" style="margin-left:6px;"></a>
+  </div>
+</div>
   
   <div id="small">
     Notes:
@@ -57,9 +71,12 @@ let countdownTimer = null;
 
 const countdownValueEl = document.getElementById('countdownValue');
 
-
 const statusEl = document.getElementById('status');
 const secEl = document.getElementById('sec');
+
+const prevItemEl = document.getElementById('prevItem');
+const currItemEl = document.getElementById('currItem');
+const nextItemEl = document.getElementById('nextItem');
 
 function shuffle(arr){
   const a = arr.slice();
@@ -70,6 +87,35 @@ function shuffle(arr){
   return a;
 }
 
+function updateQueue(){
+  if (!order.length) return;
+
+  const prevIdx = (idx - 1 + order.length) % order.length;
+  const nextIdx = (idx + 1) % order.length;
+
+  // Set text
+  prevItemEl.textContent = order[prevIdx];
+  currItemEl.textContent = order[idx];
+  nextItemEl.textContent = order[nextIdx];
+
+  // Wire clicks
+  prevItemEl.onclick = (e) => {
+    e.preventDefault();
+    idx = prevIdx;
+    show();
+    startTimer();
+  };
+
+  nextItemEl.onclick = (e) => {
+    e.preventDefault();
+    idx = nextIdx;
+    show();
+    startTimer();
+  };
+}
+
+
+  
 function openOrFocusDisplayWindow(){
   // Try to reuse existing window
   if (displayWin && !displayWin.closed) {
