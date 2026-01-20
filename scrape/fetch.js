@@ -4,97 +4,110 @@ const { chromium } = require("playwright");
 const BASE =
   "https://www.sunoutdoors.com/ontario/sun-retreats-sherkston-shores/vacation-home-sales";
 
-const MAX_PAGES = 25;          // upper bound; script stops early when paging ends
-const OUT_PATH = "docs/listings.json";
-
-function listPageUrl(n) {
+function pageUrl(n) {
   return `${BASE}?pageno=${n}`;
 }
 
-async function waitForList(page) {
-  // use multiple selectors so minor site changes don’t break the run
-  await page.waitForSelector(".dh-property-list, .storemapdata, a.seeDetailsDL", {
+async function tryClickCookieOrModalButtons(page) {
+  const selectors = [
+    'button:has-text("Accept")',
+    'button:has-text("I Accept")',
+    'button:has-text("Accept All")',
+    'button:has-text("Agree")',
+    'button:has-text("OK")',
+    'button:has-text("Got it")',
+    'button[aria-label="Close"]',
+    'button:has-text("Close")'
+  ];
+  for (const sel of selectors) {
+    const el = await page.$(sel);
+    if (el) {
+      await el.click().catch(() => {});
+      await page.waitForTimeout(300);
+    }
+  }
+}
+
+async function waitForListings(page) {
+  // short timeout so we don’t hang forever
+  await page.waitForSelector(".storemapdata[data-url], a.seeDetailsDL", {
     timeout: 15000,
-    state: "attached",
+    state: "attached"
   });
 }
 
-async function extractListingUrls(page) {
-  return await page.evaluate(() => {
-    const urls = new Set();
-
-    // Primary: elements with data-url attribute
-    document.querySelectorAll(".storemapdata").forEach((el) => {
-      const u = el.getAttribute("data-url");
-      if (u) urls.add(u);
-    });
-
-    // Fallback: explicit details links
-    document.querySelectorAll("a.seeDetailsDL").forEach((a) => {
-      if (a && a.href) urls.add(a.href);
-    });
-
-    // Normalize to absolute URLs (in case data-url is relative)
-    const abs = [];
-    urls.forEach((u) => {
-      try {
-        abs.push(new URL(u, window.location.origin).toString());
-      } catch {
-        // ignore bad urls
-      }
-    });
-
-    return abs;
-  });
+async function getListingUrls(page) {
+  const fromData = await page.$$eval(".storemapdata[data-url]", (els) =>
+    els.map((e) => e.getAttribute("data-url")).filter(Boolean)
+  );
+  const fromButtons = await page.$$eval("a.seeDetailsDL[href]", (els) =>
+    els.map((e) => e.href).filter(Boolean)
+  );
+  return Array.from(new Set([...fromData, ...fromButtons]));
 }
 
 (async () => {
   const browser = await chromium.launch();
-  const page = await browser.newPage();
+  const page = await browser.newPage({
+    userAgent:
+      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
+    viewport: { width: 1280, height: 800 },
+    locale: "en-CA"
+  });
 
+  // Keep anything from hanging too long
   page.setDefaultNavigationTimeout(30000);
   page.setDefaultTimeout(30000);
 
-  const found = new Set();
+  const listingSet = new Set();
   let pagesVisited = 0;
 
-  for (let p = 1; p <= MAX_PAGES; p++) {
-    const url = listPageUrl(p);
-    console.log(`List page ${p}: ${url}`);
+  const HARD_CAP_PAGES = 25; // your site is ~20 pages, so 25 is safe
 
+  for (let n = 1; n <= HARD_CAP_PAGES; n++) {
+    const url = pageUrl(n);
+    console.log(`\n=== Loading page ${n}: ${url}`);
+
+    // IMPORTANT: do NOT use waitUntil: "domcontentloaded" (can hang on JS sites)
     try {
-      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
+      await page.goto(url, { timeout: 30000 });
     } catch (e) {
-      console.log("Navigation failed; stopping.", e?.message || e);
+      console.log(`goto timeout/fail on page ${n}, stopping.`);
       break;
     }
 
+    console.log(`Page ${n} loaded (navigation returned)`);
+
+    await page.waitForTimeout(1500);
+    await tryClickCookieOrModalButtons(page);
+
+    console.log(`Waiting for listings on page ${n}...`);
     try {
-      await waitForList(page);
-    } catch {
-      console.log("No listing elements found; stopping.");
+      await waitForListings(page);
+    } catch (e) {
+      console.log(`No listings selector found on page ${n}, stopping.`);
       break;
     }
 
-    // small delay for any client-side rendering
-    await page.waitForTimeout(600);
-
-    const urls = await extractListingUrls(page);
+    const urls = await getListingUrls(page);
+    console.log(`Page ${n}: found ${urls.length} listing urls`);
 
     if (!urls.length) {
-      console.log("No URLs found on this page; stopping.");
+      console.log(`Page ${n} returned 0 urls, stopping.`);
       break;
     }
 
-    const before = found.size;
-    urls.forEach((u) => found.add(u));
+    const before = listingSet.size;
+    urls.forEach((u) => listingSet.add(u));
+    pagesVisited = n;
 
-    pagesVisited++;
-    console.log(`  Found ${urls.length} urls (${found.size} unique total)`);
+    console.log(`Total unique listings so far: ${listingSet.size}`);
 
-    // End condition: page didn’t add anything new
-    if (found.size === before) {
-      console.log("No new listings added; assuming end of pagination.");
+    // If page n didn’t add anything new, then the runner is seeing repeats
+    if (listingSet.size === before) {
+      console.log(
+        `No new listings added on page ${n} (runner may be seeing repeats), stopping.`
+      );
       break;
     }
   }
@@ -106,12 +119,12 @@ async function extractListingUrls(page) {
     source: BASE,
     pagination: "pageno",
     pagesVisited,
-    count: found.size,
-    listings: Array.from(found),
+    count: listingSet.size,
+    listings: Array.from(listingSet)
   };
 
   fs.mkdirSync("docs", { recursive: true });
-  fs.writeFileSync(OUT_PATH, JSON.stringify(out, null, 2), "utf-8");
+  fs.writeFileSync("docs/listings.json", JSON.stringify(out, null, 2), "utf-8");
 
-  console.log(`Saved ${out.count} listings to ${OUT_PATH}`);
+  console.log(`\nDONE. Visited ${pagesVisited} pages, saved ${out.count} listing URLs.`);
 })();
