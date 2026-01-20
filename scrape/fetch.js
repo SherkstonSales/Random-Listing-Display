@@ -4,112 +4,178 @@ const { chromium } = require("playwright");
 const BASE =
   "https://www.sunoutdoors.com/ontario/sun-retreats-sherkston-shores/vacation-home-sales";
 
-function pageUrl(n) {
+function listPageUrl(n) {
   return `${BASE}?pageno=${n}`;
 }
 
-async function tryClickCookieOrModalButtons(page) {
-  const selectors = [
-    'button:has-text("Accept")',
-    'button:has-text("I Accept")',
-    'button:has-text("Accept All")',
-    'button:has-text("Agree")',
-    'button:has-text("OK")',
-    'button:has-text("Got it")',
-    'button[aria-label="Close"]',
-    'button:has-text("Close")'
-  ];
-  for (const sel of selectors) {
-    const el = await page.$(sel);
-    if (el) {
-      await el.click().catch(() => {});
-      await page.waitForTimeout(300);
-    }
-  }
+async function waitForListCards(page) {
+  await page.waitForSelector(".dh-property-list", { timeout: 12000, state: "attached" });
 }
 
-async function waitForListings(page) {
-  // short timeout so we don’t hang forever
-  await page.waitForSelector(".storemapdata[data-url], a.seeDetailsDL", {
-    timeout: 15000,
-    state: "attached"
+async function getListPageCards(page) {
+  return await page.$$eval(".dh-property-list", (cards) => {
+    const out = [];
+    for (const c of cards) {
+      const url =
+        c.querySelector(".storemapdata")?.getAttribute("data-url") ||
+        c.querySelector("a.seeDetailsDL")?.href ||
+        null;
+
+      const img = c.querySelector("img")?.getAttribute("src") || null;
+      const priceRaw = c.querySelector(".home-list-price")?.textContent?.trim() || null;
+
+      const addrParts = Array.from(c.querySelectorAll(".address span"))
+        .map((s) => s.textContent.trim())
+        .filter(Boolean);
+      const address = addrParts.length ? addrParts.join(" ") : null;
+
+      const text = c.textContent || "";
+      const beds = (text.match(/(\d+)\s*Bed/i) || [])[1] || null;
+      const baths = (text.match(/(\d+)\s*Bath/i) || [])[1] || null;
+
+      if (url) {
+        out.push({
+          url,
+          price: priceRaw ? `$${priceRaw}`.replace("$$", "$") : null,
+          beds,
+          baths,
+          address,
+          images: img ? [img] : [],
+          description: "",
+          features: []
+        });
+      }
+    }
+    return out;
   });
 }
 
-async function getListingUrls(page) {
-  const fromData = await page.$$eval(".storemapdata[data-url]", (els) =>
-    els.map((e) => e.getAttribute("data-url")).filter(Boolean)
-  );
-  const fromButtons = await page.$$eval("a.seeDetailsDL[href]", (els) =>
-    els.map((e) => e.href).filter(Boolean)
-  );
-  return Array.from(new Set([...fromData, ...fromButtons]));
+async function extractDetails(detailPage) {
+  return await detailPage.evaluate(() => {
+    const pickText = (sels) => {
+      for (const sel of sels) {
+        const el = document.querySelector(sel);
+        if (el && el.textContent) {
+          const t = el.textContent.trim();
+          if (t) return t;
+        }
+      }
+      return "";
+    };
+
+    const pickManyText = (sels) => {
+      for (const sel of sels) {
+        const els = Array.from(document.querySelectorAll(sel));
+        const items = els.map((e) => (e.textContent || "").trim()).filter(Boolean);
+        if (items.length) return items;
+      }
+      return [];
+    };
+
+    // Grab likely gallery/hero images
+    const imgs = Array.from(document.querySelectorAll("img"))
+      .map((img) => img.currentSrc || img.getAttribute("src") || "")
+      .filter(Boolean)
+      .filter((src) =>
+        src.includes("cloudfront") ||
+        src.includes("milestoneinternet") ||
+        src.includes("cdn-cgi")
+      );
+
+    const images = Array.from(new Set(imgs)).slice(0, 12);
+
+    const description = pickText([
+      ".description",
+      ".property-description",
+      ".vhs-description",
+      ".listing-description",
+      "main p"
+    ]);
+
+    const features = pickManyText([
+      ".features li",
+      ".amenities li",
+      ".property-features li",
+      ".vhs-features li"
+    ]).slice(0, 20);
+
+    return { images, description, features };
+  });
 }
 
 (async () => {
   const browser = await chromium.launch();
-  const page = await browser.newPage({
-    userAgent:
-      "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
-    viewport: { width: 1280, height: 800 },
-    locale: "en-CA"
-  });
+  const page = await browser.newPage();
 
-  // Keep anything from hanging too long
+  // Prevent hangs
   page.setDefaultNavigationTimeout(30000);
   page.setDefaultTimeout(30000);
 
-  const listingSet = new Set();
-  let pagesVisited = 0;
+  const listingsByUrl = new Map();
 
-  const HARD_CAP_PAGES = 25; // your site is ~20 pages, so 25 is safe
+  // 1) Walk list pages and collect listing cards
+  for (let p = 1; p <= 25; p++) {
+    const url = listPageUrl(p);
+    console.log(`List page ${p}: ${url}`);
 
-  for (let n = 1; n <= HARD_CAP_PAGES; n++) {
-    const url = pageUrl(n);
-    console.log(`\n=== Loading page ${n}: ${url}`);
-
-    // IMPORTANT: do NOT use waitUntil: "domcontentloaded" (can hang on JS sites)
     try {
       await page.goto(url, { timeout: 30000 });
-    } catch (e) {
-      console.log(`goto timeout/fail on page ${n}, stopping.`);
+    } catch {
       break;
     }
 
-    console.log(`Page ${n} loaded (navigation returned)`);
+    await page.waitForTimeout(900);
 
-    await page.waitForTimeout(1500);
-    await tryClickCookieOrModalButtons(page);
-
-    console.log(`Waiting for listings on page ${n}...`);
+    let cards = [];
     try {
-      await waitForListings(page);
-    } catch (e) {
-      console.log(`No listings selector found on page ${n}, stopping.`);
+      await waitForListCards(page);
+      cards = await getListPageCards(page);
+    } catch {
       break;
     }
 
-    const urls = await getListingUrls(page);
-    console.log(`Page ${n}: found ${urls.length} listing urls`);
+    if (!cards.length) break;
 
-    if (!urls.length) {
-      console.log(`Page ${n} returned 0 urls, stopping.`);
-      break;
+    const before = listingsByUrl.size;
+    for (const c of cards) {
+      if (!listingsByUrl.has(c.url)) listingsByUrl.set(c.url, c);
     }
 
-    const before = listingSet.size;
-    urls.forEach((u) => listingSet.add(u));
-    pagesVisited = n;
+    // If nothing new was added, likely end of paging
+    if (listingsByUrl.size === before) break;
 
-    console.log(`Total unique listings so far: ${listingSet.size}`);
+    await page.waitForTimeout(150);
+  }
 
-    // If page n didn’t add anything new, then the runner is seeing repeats
-    if (listingSet.size === before) {
-      console.log(
-        `No new listings added on page ${n} (runner may be seeing repeats), stopping.`
-      );
-      break;
+  // 2) Visit each detail page and enrich
+  const detail = await browser.newPage();
+  detail.setDefaultNavigationTimeout(30000);
+  detail.setDefaultTimeout(30000);
+
+  let i = 0;
+  for (const [url, item] of listingsByUrl) {
+    i++;
+    console.log(`Detail ${i}/${listingsByUrl.size}: ${url}`);
+
+    try {
+      await detail.goto(url, { timeout: 30000 });
+    } catch {
+      continue;
     }
+
+    await detail.waitForTimeout(900);
+
+    try {
+      const d = await extractDetails(detail);
+      if (d.images && d.images.length) item.images = d.images;
+      if (d.description) item.description = d.description;
+      if (d.features && d.features.length) item.features = d.features;
+    } catch {
+      // keep whatever we already had
+    }
+
+    // small delay
+    await detail.waitForTimeout(80);
   }
 
   await browser.close();
@@ -117,14 +183,12 @@ async function getListingUrls(page) {
   const out = {
     updatedAt: new Date().toISOString(),
     source: BASE,
-    pagination: "pageno",
-    pagesVisited,
-    count: listingSet.size,
-    listings: Array.from(listingSet)
+    count: listingsByUrl.size,
+    listings: Array.from(listingsByUrl.values())
   };
 
   fs.mkdirSync("docs", { recursive: true });
-  fs.writeFileSync("docs/listings.json", JSON.stringify(out, null, 2), "utf-8");
+  fs.writeFileSync("docs/listings_detailed.json", JSON.stringify(out, null, 2), "utf-8");
 
-  console.log(`\nDONE. Visited ${pagesVisited} pages, saved ${out.count} listing URLs.`);
+  console.log(`Saved ${out.count} detailed listings to docs/listings_detailed.json`);
 })();
