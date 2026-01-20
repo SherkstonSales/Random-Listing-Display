@@ -23,14 +23,15 @@ async function tryClickCookieOrModalButtons(page) {
     const el = await page.$(sel);
     if (el) {
       await el.click().catch(() => {});
-      await page.waitForTimeout(500);
+      await page.waitForTimeout(300);
     }
   }
 }
 
 async function waitForListings(page) {
+  // short timeout so we don’t hang forever
   await page.waitForSelector(".storemapdata[data-url], a.seeDetailsDL", {
-    timeout: 60000,
+    timeout: 15000,
     state: "attached"
   });
 }
@@ -54,40 +55,61 @@ async function getListingUrls(page) {
     locale: "en-CA"
   });
 
+  // Keep anything from hanging too long
+  page.setDefaultNavigationTimeout(30000);
+  page.setDefaultTimeout(30000);
+
   const listingSet = new Set();
   let pagesVisited = 0;
 
-  // Loop pages until we stop seeing new listings.
-  // Safety cap at 100 pages (way above your ~20).
-  for (let n = 1; n <= 100; n++) {
+  const HARD_CAP_PAGES = 25; // your site is ~20 pages, so 25 is safe
+
+  for (let n = 1; n <= HARD_CAP_PAGES; n++) {
     const url = pageUrl(n);
-    
-    await page.goto(url, { timeout: 30000 });
+    console.log(`\n=== Loading page ${n}: ${url}`);
+
+    // IMPORTANT: do NOT use waitUntil: "domcontentloaded" (can hang on JS sites)
+    try {
+      await page.goto(url, { timeout: 30000 });
+    } catch (e) {
+      console.log(`goto timeout/fail on page ${n}, stopping.`);
+      break;
+    }
+
     console.log(`Page ${n} loaded (navigation returned)`);
 
+    await page.waitForTimeout(1500);
     await tryClickCookieOrModalButtons(page);
 
-    // If listings never appear on a page, assume we’re past the last page.
+    console.log(`Waiting for listings on page ${n}...`);
     try {
       await waitForListings(page);
-    } catch {
+    } catch (e) {
+      console.log(`No listings selector found on page ${n}, stopping.`);
       break;
     }
 
     const urls = await getListingUrls(page);
+    console.log(`Page ${n}: found ${urls.length} listing urls`);
 
-    // If page returns nothing, stop.
-    if (!urls.length) break;
+    if (!urls.length) {
+      console.log(`Page ${n} returned 0 urls, stopping.`);
+      break;
+    }
 
     const before = listingSet.size;
     urls.forEach((u) => listingSet.add(u));
     pagesVisited = n;
 
-    // If we didn’t add anything new, we’ve hit the end.
-    if (listingSet.size === before) break;
+    console.log(`Total unique listings so far: ${listingSet.size}`);
 
-    // polite delay
-    await page.waitForTimeout(250);
+    // If page n didn’t add anything new, then the runner is seeing repeats
+    if (listingSet.size === before) {
+      console.log(
+        `No new listings added on page ${n} (runner may be seeing repeats), stopping.`
+      );
+      break;
+    }
   }
 
   await browser.close();
@@ -104,5 +126,5 @@ async function getListingUrls(page) {
   fs.mkdirSync("docs", { recursive: true });
   fs.writeFileSync("docs/listings.json", JSON.stringify(out, null, 2), "utf-8");
 
-  console.log(`Visited ${pagesVisited} pages, saved ${out.count} listing URLs.`);
+  console.log(`\nDONE. Visited ${pagesVisited} pages, saved ${out.count} listing URLs.`);
 })();
