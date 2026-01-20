@@ -1,234 +1,184 @@
 <!doctype html>
-<html>
+<html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Sherkston Listings Display</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>My GitHub Page</title>
+  <meta name="description" content="A simple GitHub Pages index with safe Previous / Current / Next navigation." />
 
   <style>
-    body {
-      font-family: system-ui, Arial;
-      margin: 20px;
-      background: #f6f6f6;
+    :root { color-scheme: light dark; }
+    body { margin: 0; font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; line-height: 1.4; }
+    header, main, footer { max-width: 980px; margin: 0 auto; padding: 16px; }
+    header { padding-top: 28px; padding-bottom: 8px; }
+    h1 { margin: 0 0 6px 0; font-size: 28px; }
+    .sub { opacity: 0.75; margin: 0; }
+
+    .toolbar {
+      display: flex; gap: 12px; flex-wrap: wrap;
+      align-items: center; justify-content: space-between;
+      padding: 12px 16px; border-radius: 10px;
+      border: 1px solid rgba(127,127,127,.35);
+      margin: 12px 0 20px 0;
     }
 
-    button {
-      font-size: 16px;
-      padding: 10px 14px;
-      margin: 6px 6px 6px 0;
-      cursor: pointer;
+    .pcn {
+      display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
     }
-
-    input {
-      font-size: 16px;
-      padding: 8px;
-      width: 90px;
-    }
-
-    #status {
-      margin-top: 12px;
-      padding: 10px;
-      background: #111;
-      color: #fff;
-      display: inline-block;
+    .pcn a, .pcn button {
+      border: 1px solid rgba(127,127,127,.45);
+      background: transparent;
+      padding: 8px 12px;
       border-radius: 8px;
-    }
-
-    #queue {
-      margin-top: 14px;
-      padding: 12px;
-      border: 1px solid #ccc;
-      border-radius: 10px;
-      max-width: 1100px;
-      background: #fff;
-    }
-
-    #queue div {
-      margin-top: 6px;
-    }
-
-    #queue a {
-      color: #0066cc;
+      cursor: pointer;
       text-decoration: none;
-      word-break: break-all;
+      color: inherit;
+      font: inherit;
+    }
+    .pcn a[aria-disabled="true"], .pcn button:disabled {
+      opacity: 0.5; cursor: not-allowed;
+    }
+    .pcn .current {
+      padding: 8px 12px;
+      border-radius: 8px;
+      border: 1px dashed rgba(127,127,127,.45);
+      opacity: 0.9;
+      white-space: nowrap;
     }
 
-    #queue a:hover {
-      text-decoration: underline;
+    .grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      gap: 14px;
     }
+    .card {
+      border: 1px solid rgba(127,127,127,.35);
+      border-radius: 12px;
+      padding: 14px;
+    }
+    .card h2 { margin: 0 0 8px 0; font-size: 18px; }
+    .card p { margin: 0 0 10px 0; opacity: 0.85; }
+    .card a { text-decoration: none; }
+    .muted { opacity: 0.7; }
 
-    #countdown {
-      margin-top: 10px;
-      font-size: 16px;
-    }
-
-    #small {
-      opacity: .75;
-      margin-top: 14px;
-      max-width: 900px;
-    }
+    .hidden { display: none !important; }
+    footer { opacity: 0.7; font-size: 13px; padding-bottom: 30px; }
   </style>
 </head>
 
 <body>
+  <header>
+    <h1>My GitHub Page</h1>
+    <p class="sub">Welcome — this page includes a safe Previous / Current / Next control.</p>
+  </header>
 
-<h2>Sherkston Listing Display (Controller)</h2>
+  <main>
+    <!-- TOOLBAR (includes Prev/Current/Next) -->
+    <section class="toolbar" aria-label="Page tools">
+      <div class="pcn" id="pcnNav">
+        <!-- Using buttons so this works even if you’re not actually changing pages -->
+        <button id="pcnPrev" type="button">Previous</button>
+        <span class="current" id="pcnCurrent">Current: Home</span>
+        <button id="pcnNext" type="button">Next</button>
+      </div>
 
-<div>
-  Rotate every
-  <input id="sec" type="number" min="5" value="25" />
-  seconds
-</div>
+      <div class="muted" id="statusText" aria-live="polite"></div>
+    </section>
 
-<div style="margin-top:10px">
-  <button id="start">Start Display Window</button>
-  <button id="pause">Pause</button>
-  <button id="next">Next</button>
-  <button id="shuffle">Shuffle</button>
-  <button id="reopen">Re-open Display Window</button>
-  <button onclick="window.location.href='custom.html'">Open Custom Display</button>
-</div>
+    <!-- CONTENT -->
+    <section class="grid" id="cards">
+      <article class="card">
+        <h2>Section 1</h2>
+        <p>Put your real content here (links, images, whatever).</p>
+        <a href="#" class="muted">Example link</a>
+      </article>
 
-<div id="status">Loading listings…</div>
+      <article class="card">
+        <h2>Section 2</h2>
+        <p>Another card/section you can customize.</p>
+        <a href="#" class="muted">Example link</a>
+      </article>
 
-<div id="countdown">
-  Next in: <strong><span id="countdownValue">--</span></strong>
-</div>
+      <article class="card">
+        <h2>Section 3</h2>
+        <p>This template won’t crash if you remove the nav.</p>
+        <a href="#" class="muted">Example link</a>
+      </article>
+    </section>
+  </main>
 
-<div id="queue">
-  <div>
-    <strong>Previous Viewed:</strong>
-    <a href="#" id="prevItem">—</a>
-  </div>
-  <div>
-    <strong>Current Viewing:</strong>
-    <span id="currItem">—</span>
-  </div>
-  <div>
-    <strong>Next Up:</strong>
-    <a href="#" id="nextItem">—</a>
-  </div>
-</div>
+  <footer>
+    <div>© <span id="year"></span> — Hosted on GitHub Pages</div>
+  </footer>
 
-<div id="small">
-  Notes:
-  <ul>
-    <li>Allow popups once so the display window can open.</li>
-    <li>Keyboard: Space = Pause / Play · → = Next · R = Shuffle</li>
-  </ul>
-</div>
+  <script>
+    // ==============
+    // SAFE PAGE JS
+    // ==============
+    document.addEventListener("DOMContentLoaded", () => {
+      // Always-safe footer year
+      const yearEl = document.getElementById("year");
+      if (yearEl) yearEl.textContent = String(new Date().getFullYear());
 
-<script>
-/* ------------------ STATE ------------------ */
-let listings = [];
-let order = [];
-let idx = 0;
-let paused = false;
-let timer = null;
-let countdownTimer = null;
-let nextAt = 0;
-let displayWin = null;
+      // Toggle this to instantly “revert” the Prev/Current/Next UI without touching HTML
+      const ENABLE_PCN = true;
 
-/* ------------------ ELEMENTS ------------------ */
-const statusEl = document.getElementById('status');
-const secEl = document.getElementById('sec');
-const countdownValueEl = document.getElementById('countdownValue');
+      const pcnNav = document.getElementById("pcnNav");
+      const prevBtn = document.getElementById("pcnPrev");
+      const nextBtn = document.getElementById("pcnNext");
+      const currentEl = document.getElementById("pcnCurrent");
+      const statusText = document.getElementById("statusText");
 
-const prevItemEl = document.getElementById('prevItem');
-const currItemEl = document.getElementById('currItem');
-const nextItemEl = document.getElementById('nextItem');
+      // If disabled or missing elements, do NOT break page — just hide nav
+      if (!ENABLE_PCN || !pcnNav || !prevBtn || !nextBtn || !currentEl) {
+        if (pcnNav) pcnNav.classList.add("hidden");
+        return;
+      }
 
-/* ------------------ HELPERS ------------------ */
-function shuffle(arr) {
-  const a = arr.slice();
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
-}
+      // Example “steps” — replace these with your real pages/sections if you want
+      const steps = [
+        { label: "Home", action: () => setStatus("You’re on Home.") },
+        { label: "Projects", action: () => setStatus("You’re viewing Projects.") },
+        { label: "Contact", action: () => setStatus("You’re viewing Contact.") }
+      ];
 
-function openOrFocusDisplayWindow() {
-  if (displayWin && !displayWin.closed) {
-    displayWin.focus();
-    return true;
-  }
-  displayWin = window.open('about:blank', 'SherkstonListingDisplay');
-  if (!displayWin) return false;
-  displayWin.document.write('<title>Listing Display</title><body>Loading…</body>');
-  displayWin.focus();
-  return true;
-}
+      let idx = 0;
 
-/* ------------------ QUEUE DISPLAY ------------------ */
-function updateQueue() {
-  if (!order.length) return;
+      function setStatus(msg) {
+        if (statusText) statusText.textContent = msg || "";
+      }
 
-  const prevIdx = (idx - 1 + order.length) % order.length;
-  const nextIdx = (idx + 1) % order.length;
+      function render() {
+        const label = steps[idx]?.label ?? "Home";
+        currentEl.textContent = "Current: " + label;
 
-  prevItemEl.textContent = order[prevIdx];
-  currItemEl.textContent = order[idx];
-  nextItemEl.textContent = order[nextIdx];
+        // Disable edges
+        prevBtn.disabled = idx <= 0;
+        nextBtn.disabled = idx >= steps.length - 1;
 
-  prevItemEl.onclick = (e) => {
-    e.preventDefault();
-    idx = prevIdx;
-    show();
-    startTimer();
-  };
+        // Run the step action safely
+        try {
+          const fn = steps[idx]?.action;
+          if (typeof fn === "function") fn();
+        } catch (e) {
+          // Don’t crash the page if your step logic throws
+          console.warn("Step action failed:", e);
+          setStatus("Navigation loaded (with a warning).");
+        }
+      }
 
-  nextItemEl.onclick = (e) => {
-    e.preventDefault();
-    idx = nextIdx;
-    show();
-    startTimer();
-  };
-}
+      prevBtn.addEventListener("click", () => {
+        if (idx > 0) idx--;
+        render();
+      });
 
-/* ------------------ DISPLAY ------------------ */
-function show() {
-  if (!order.length) return;
+      nextBtn.addEventListener("click", () => {
+        if (idx < steps.length - 1) idx++;
+        render();
+      });
 
-  const url = order[idx];
-
-  if (!openOrFocusDisplayWindow()) {
-    statusEl.textContent = 'Popup blocked. Allow popups and try again.';
-    return;
-  }
-
-  displayWin.location.href = url;
-
-  statusEl.textContent =
-    (paused ? 'Paused' : 'Playing') +
-    ` | ${idx + 1}/${order.length} | ${url}`;
-
-  updateQueue();
-}
-
-function next() {
-  if (!order.length) return;
-  idx = (idx + 1) % order.length;
-  show();
-}
-
-/* ------------------ TIMERS ------------------ */
-function startTimer() {
-  const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
-
-  clearInterval(timer);
-  clearInterval(countdownTimer);
-
-  nextAt = Date.now() + seconds * 1000;
-
-  timer = setInterval(() => {
-    if (paused) return;
-    next();
-    nextAt = Date.now() + seconds * 1000;
-  }, seconds * 1000);
-
-  countdownTimer = setInterval(() => {
-    if (paused) {
-      countdownValueEl.textContent = 'PAUSED';
-      return;
-    }
-    const remaining = Math.max(0, Math.ceil((nextAt - Date.now())
+      render();
+    });
+  </script>
+</body>
+</html>
