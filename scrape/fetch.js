@@ -23,7 +23,7 @@ const START_URL = 'https://www.sunoutdoors.com/ontario/sun-retreats-sherkston-sh
 
   await browser.close();
 
-  fs.mkdirSync('display', { recursive: true });
-  fs.writeFileSync('display/listings.json',
+  fs.mkdirSync('docs', { recursive: true });
+  fs.writeFileSync('docs/listings.json',
     JSON.stringify({ listings: [...urls] }, null, 2));
 })();
