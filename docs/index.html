@@ -26,7 +26,6 @@
     <button id="next">Next</button>
     <button id="shuffle">Shuffle</button>
     <button id="reopen">Re-open Display Window</button>
-    <button onclick="window.location.href='custom.html'">Open Custom Display</button>
   </div>
 
   <div id="status">Loading listings…</div>
@@ -225,6 +224,10 @@ document.getElementById('pause').addEventListener('click', () => {
 
 document.getElementById('next').addEventListener('click', () => {
   next();
+
+  // restart the timer/countdown from "now"
+  const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
+  nextAt = Date.now() + seconds * 1000;
 });
 
 document.getElementById('shuffle').addEventListener('click', () => {
@@ -245,7 +248,11 @@ document.addEventListener('keydown', (e) => {
     }
     show();
   }
-  if (e.code === 'ArrowRight') next();
+  if (e.code === 'ArrowRight') {
+    next();
+    const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
+    nextAt = Date.now() + seconds * 1000;
+  }
   if (e.key === 'r' || e.key === 'R') { order = shuffle(listings); idx = 0; show(); }
 });
 
