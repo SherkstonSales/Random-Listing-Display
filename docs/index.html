@@ -2,62 +2,154 @@
 <html>
 <head>
   <meta charset="utf-8" />
-  <title>Sherkston Listings</title>
+  <title>Sherkston Listings Display</title>
   <style>
-    html, body { height:100%; margin:0; background:#000; color:#fff; font-family: Arial, sans-serif; }
-    #frame { width:100vw; height:100vh; border:0; }
-    #hud {
-      position: fixed; left: 12px; bottom: 12px;
-      background: rgba(0,0,0,0.65); padding: 10px 12px;
-      border-radius: 8px; font-size: 14px;
-    }
+    body{font-family:system-ui,Arial;margin:20px}
+    button{font-size:16px;padding:10px 14px;margin:6px 6px 6px 0;cursor:pointer}
+    #status{margin-top:12px;padding:10px;background:#111;color:#fff;display:inline-block;border-radius:8px}
+    #small{opacity:.75;margin-top:10px;max-width:900px}
+    input{font-size:16px;padding:8px;width:90px}
   </style>
 </head>
 <body>
-  <iframe id="frame"></iframe>
+  <h2>Sherkston Listing Display (Actual Website Pages)</h2>
 
-  <div id="hud">
-    <b>Listings Rotation</b><br>
-    <span id="status">Loading…</span><br>
-    Space = Pause • → = Next • R = Shuffle
+  <div>
+    Rotate every
+    <input id="sec" type="number" min="5" value="25" />
+    seconds
+  </div>
+
+  <div style="margin-top:10px">
+    <button id="start">Start Display Window</button>
+    <button id="pause">Pause</button>
+    <button id="next">Next</button>
+    <button id="shuffle">Shuffle</button>
+    <button id="reopen">Re-open Display Window</button>
+  </div>
+
+  <div id="status">Loading listings…</div>
+
+  <div id="small">
+    Notes:
+    <ul>
+      <li>You must allow popups for this site (one-time) or the display window can’t open.</li>
+      <li>This shows the real SunOutdoors listing pages (full page), not an embedded frame.</li>
+      <li>Keyboard: Space = Pause/Play, → = Next, R = Shuffle</li>
+    </ul>
   </div>
 
 <script>
-  const ROTATE_SECONDS = 20;
-  let listings = [], order = [], idx = 0, paused = false;
+let listings = [];
+let order = [];
+let idx = 0;
+let paused = false;
+let timer = null;
+let displayWin = null;
 
-  const frame = document.getElementById('frame');
-  const status = document.getElementById('status');
+const statusEl = document.getElementById('status');
+const secEl = document.getElementById('sec');
 
-  function shuffle(a){for(let i=a.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[a[i],a[j]]=[a[j],a[i]]}return a}
+function shuffle(arr){
+  const a = arr.slice();
+  for(let i=a.length-1;i>0;i--){
+    const j = Math.floor(Math.random()*(i+1));
+    [a[i],a[j]] = [a[j],a[i]];
+  }
+  return a;
+}
 
-  function show(){ frame.src = order[idx]; status.textContent = paused ? 'Paused' : 'Playing'; }
-  function next(){ idx = (idx + 1) % order.length; show(); }
+function openOrFocusDisplayWindow(){
+  // Try to reuse existing window
+  if (displayWin && !displayWin.closed) {
+    displayWin.focus();
+    return true;
+  }
+  // Open a blank window we control, then we navigate it
+  displayWin = window.open('about:blank', 'SherkstonListingDisplay');
+  if (!displayWin) return false;
+  displayWin.document.write('<title>Listings Display</title><body style="font-family:system-ui;margin:20px">Loading…</body>');
+  displayWin.focus();
+  return true;
+}
 
-  setInterval(()=>{ if(!paused && order.length) next(); }, ROTATE_SECONDS*1000);
+function show(){
+  if (!order.length) return;
 
-  document.addEventListener('keydown', e=>{
-    if(e.code==='Space'){ paused=!paused; show(); }
-    if(e.code==='ArrowRight') next();
-    if(e.key==='r' || e.key==='R'){ order = shuffle([...listings]); idx=0; show(); }
-  });
+  const url = order[idx];
+  if (!openOrFocusDisplayWindow()){
+    statusEl.textContent = 'Popup blocked. Allow popups for this site, then click "Re-open Display Window".';
+    return;
+  }
+  // Navigate the display window to the real listing page (cross-origin navigation is allowed)
+  displayWin.location.href = url;
 
-fetch('./listings.json', { cache:'no-store' })
+  statusEl.textContent =
+    (paused ? 'Paused' : 'Playing') +
+    ` | ${idx+1}/${order.length} | ` + url;
+}
+
+function next(){
+  if (!order.length) return;
+  idx = (idx + 1) % order.length;
+  show();
+}
+
+function startTimer(){
+  const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
+  clearInterval(timer);
+  timer = setInterval(() => { if (!paused) next(); }, seconds * 1000);
+}
+
+document.getElementById('start').addEventListener('click', () => {
+  paused = false;
+  openOrFocusDisplayWindow();
+  show();
+  startTimer();
+});
+
+document.getElementById('reopen').addEventListener('click', () => {
+  openOrFocusDisplayWindow();
+  show();
+});
+
+document.getElementById('pause').addEventListener('click', () => {
+  paused = !paused;
+  show();
+});
+
+document.getElementById('next').addEventListener('click', () => {
+  next();
+});
+
+document.getElementById('shuffle').addEventListener('click', () => {
+  order = shuffle(listings);
+  idx = 0;
+  show();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') { paused = !paused; show(); }
+  if (e.code === 'ArrowRight') next();
+  if (e.key === 'r' || e.key === 'R') { order = shuffle(listings); idx = 0; show(); }
+});
+
+fetch('./listings.json', { cache: 'no-store' })
   .then(r => r.json())
   .then(d => {
     listings = d.listings || [];
-    if (!listings.length) {
-      status.textContent = 'No listings found (listings.json is empty).';
-      return; // IMPORTANT: don’t try to load iframe
+    if (!listings.length){
+      statusEl.textContent = 'No listings found in listings.json yet.';
+      return;
     }
-    order = shuffle([...listings]);
-    show();
+    order = shuffle(listings);
+    idx = 0;
+    statusEl.textContent = `Loaded ${order.length} listings. Click "Start Display Window".`;
   })
   .catch(err => {
-    status.textContent = 'Error loading listings.json';
+    statusEl.textContent = 'Error loading listings.json';
     console.log(err);
   });
-
 </script>
 </body>
 </html>
