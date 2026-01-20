@@ -171,9 +171,23 @@ document.addEventListener('keydown', (e) => {
   if (e.key === 'r' || e.key === 'R') { order = shuffle(listings); idx = 0; show(); }
 });
 
-secEl.addEventListener('change', () => {
-  if (timer) startTimer();
+function applyNewInterval(){
+  // restart timers using the new value
+  startTimer();
+}
+
+// Fires as you type / use arrow buttons
+secEl.addEventListener('input', () => {
+  if (!order.length) return;     // don’t run before listings loaded
+  applyNewInterval();
 });
+
+// Also fires when you click away (backup)
+secEl.addEventListener('change', () => {
+  if (!order.length) return;
+  applyNewInterval();
+});
+
   
 fetch('./listings.json', { cache: 'no-store' })
   .then(r => r.json())
