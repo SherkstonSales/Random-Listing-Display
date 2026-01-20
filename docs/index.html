@@ -215,4 +215,76 @@ document.getElementById('pause').addEventListener('click', () => {
   paused = !paused;
   document.getElementById('pause').textContent = paused ? 'Play' : 'Pause';
 
-  // When unpausing, restart the countdown fr
+  // When unpausing, restart the countdown fresh
+  if (!paused) {
+    const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
+    nextAt = Date.now() + seconds * 1000;
+  }
+  show();
+});
+
+document.getElementById('next').addEventListener('click', () => {
+  next();
+});
+
+document.getElementById('shuffle').addEventListener('click', () => {
+  order = shuffle(listings);
+  idx = 0;
+  show();
+});
+
+// Keyboard: Space = Pause/Play, → = Next, R = Shuffle
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space') {
+    e.preventDefault();
+    paused = !paused;
+    document.getElementById('pause').textContent = paused ? 'Play' : 'Pause';
+    if (!paused) {
+      const seconds = Math.max(5, parseInt(secEl.value || '25', 10));
+      nextAt = Date.now() + seconds * 1000;
+    }
+    show();
+  }
+  if (e.code === 'ArrowRight') next();
+  if (e.key === 'r' || e.key === 'R') { order = shuffle(listings); idx = 0; show(); }
+});
+
+function applyNewInterval(){
+  // restart timers using the new value
+  startTimer();
+}
+
+// Fires as you type / use arrow buttons
+secEl.addEventListener('input', () => {
+  if (!order.length) return;     // don’t run before listings loaded
+  applyNewInterval();
+});
+
+// Also fires when you click away (backup)
+secEl.addEventListener('change', () => {
+  if (!order.length) return;
+  applyNewInterval();
+});
+
+fetch('./listings.json', { cache: 'no-store' })
+  .then(r => r.json())
+  .then(d => {
+    listings = d.listings || [];
+    if (!listings.length){
+      statusEl.textContent = 'No listings found in listings.json yet.';
+      return;
+    }
+    order = shuffle(listings);
+    idx = 0;
+    statusEl.textContent = `Loaded ${order.length} listings. Click "Start Display Window".`;
+
+    // Show queue immediately (so you can see prev/current/next before starting)
+    updateQueue();
+  })
+  .catch(err => {
+    statusEl.textContent = 'Error loading listings.json';
+    console.log(err);
+  });
+</script>
+</body>
+</html>
