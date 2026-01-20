@@ -61,8 +61,9 @@ async function getListingUrls(page) {
   // Safety cap at 100 pages (way above your ~20).
   for (let n = 1; n <= 100; n++) {
     const url = pageUrl(n);
-
-await page.goto(url, { timeout: 30000 });
+    
+    await page.goto(url, { timeout: 30000 });
+    console.log(`Page ${n} loaded (navigation returned)`);
 
     await tryClickCookieOrModalButtons(page);
 
