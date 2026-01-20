@@ -22,6 +22,6 @@ jobs:
       - run: |
           git config user.name github-actions
           git config user.email github-actions@github.com
-          git add display/listings.json
+          git add docs/listings.json
           git commit -m "Update listings" || true
           git push
