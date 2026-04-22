@@ -30,10 +30,29 @@ async function tryClickCookieOrModalButtons(page) {
 }
 
 async function waitForListings(page) {
-  await page.waitForSelector(".vhs-list-block-outer a.seeDetailsDL[href]", {
-    timeout: 30000,
-    state: "attached"
-  });
+  const timeoutMs = 30000;
+  const start = Date.now();
+
+  while (Date.now() - start < timeoutMs) {
+
+    const count = await page.$$eval(
+      ".storemapdata[data-url], a.seeDetailsDL[href]",
+      els => els.length
+    ).catch(() => 0);
+
+    console.log(`Listing selector count: ${count}`);
+
+    if (count > 0) {
+      return;
+    }
+
+    // scroll a bit in case listings lazy-load
+    await page.mouse.wheel(0, 1500).catch(() => {});
+
+    await page.waitForTimeout(1000);
+  }
+
+  throw new Error("Listings never appeared");
 }
 
 async function getListingUrls(page) {
@@ -73,7 +92,7 @@ async function getListingUrls(page) {
 
     console.log(`Page ${n} loaded (navigation returned)`);
 
-    await page.waitForTimeout(6000);
+    await page.waitForTimeout(8000);
     await tryClickCookieOrModalButtons(page);
 
     // scroll in case lazy render / lazy load is involved
