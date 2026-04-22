@@ -31,19 +31,16 @@ async function tryClickCookieOrModalButtons(page) {
 async function waitForListings(page) {
   // short timeout so we don’t hang forever
   await page.waitForSelector(".storemapdata[data-url], a.seeDetailsDL", {
-    timeout: 15000,
+    timeout: 25000,
     state: "attached"
   });
 }
 
 async function getListingUrls(page) {
-  const fromData = await page.$$eval(".storemapdata[data-url]", (els) =>
-    els.map((e) => e.getAttribute("data-url")).filter(Boolean)
-  );
-  const fromButtons = await page.$$eval("a.seeDetailsDL[href]", (els) =>
+  const urls = await page.$$eval(".vhs-list-block-outer a.seeDetailsDL[href]", (els) =>
     els.map((e) => e.href).filter(Boolean)
   );
-  return Array.from(new Set([...fromData, ...fromButtons]));
+  return Array.from(new Set(urls));
 }
 
 (async () => {
