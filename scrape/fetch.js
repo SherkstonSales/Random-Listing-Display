@@ -115,9 +115,19 @@ async function getListingUrls(page) {
       await waitForListings(page);
     } catch (e) {
       console.log(`No listings selector found on page ${n}, stopping.`);
-      fs.mkdirSync("docs", { recursive: true });
-      fs.writeFileSync(`docs/debug-page${n}.html`, await page.content(), "utf-8");
-      console.log(`Saved debug HTML to docs/debug-page${n}.html`);
+
+      const title = await page.title().catch(() => "NO TITLE");
+
+      const bodyText = await page.evaluate(() => {
+        return (document.body?.innerText || "").slice(0, 3000);
+      }).catch(() => "NO BODY TEXT");
+
+      console.log("===== PAGE TITLE =====");
+      console.log(title);
+
+      console.log("===== BODY TEXT =====");
+      console.log(bodyText);
+
       break;
     }
 
