@@ -1,7 +1,7 @@
 {
-  "updatedAt": "2026-04-22T17:03:42.095Z",
-  "source": "https://www.sunoutdoors.com/ontario/sun-retreats-sherkston-shores/vacation-home-sales",
-  "pagination": "pageno",
+  "updatedAt": "2026-04-22T17:41:03.129Z",
+  "source": "https://www.sunoutdoors.com/api/InventoryApi/GetInventoryRecords",
+  "pagination": "pageNumber",
   "pagesVisited": 0,
   "count": 0,
   "listings": []
