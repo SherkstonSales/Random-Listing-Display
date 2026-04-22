@@ -30,10 +30,10 @@ async function tryClickCookieOrModalButtons(page) {
 
 async function waitForListings(page) {
   // short timeout so we don’t hang forever
-  await page.waitForSelector(".storemapdata[data-url], a.seeDetailsDL", {
-    timeout: 25000,
-    state: "attached"
-  });
+  await page.waitForSelector(".vhs-list-block-outer a.seeDetailsDL[href]", {
+  timeout: 25000,
+  state: "attached"
+});
 }
 
 async function getListingUrls(page) {
@@ -75,7 +75,7 @@ async function getListingUrls(page) {
 
     console.log(`Page ${n} loaded (navigation returned)`);
 
-    await page.waitForTimeout(1500);
+    await page.waitForTimeout(4000);
     await tryClickCookieOrModalButtons(page);
 
     console.log(`Waiting for listings on page ${n}...`);
