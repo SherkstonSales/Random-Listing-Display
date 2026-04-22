@@ -22,18 +22,18 @@ async function tryClickCookieOrModalButtons(page) {
   for (const sel of selectors) {
     const el = await page.$(sel);
     if (el) {
+      console.log(`Clicked modal/cookie button: ${sel}`);
       await el.click().catch(() => {});
-      await page.waitForTimeout(300);
+      await page.waitForTimeout(500);
     }
   }
 }
 
 async function waitForListings(page) {
-  // short timeout so we don’t hang forever
   await page.waitForSelector(".vhs-list-block-outer a.seeDetailsDL[href]", {
-  timeout: 25000,
-  state: "attached"
-});
+    timeout: 30000,
+    state: "attached"
+  });
 }
 
 async function getListingUrls(page) {
@@ -44,7 +44,7 @@ async function getListingUrls(page) {
 }
 
 (async () => {
-  const browser = await chromium.launch();
+  const browser = await chromium.launch({ headless: true });
   const page = await browser.newPage({
     userAgent:
       "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120 Safari/537.36",
@@ -52,37 +52,53 @@ async function getListingUrls(page) {
     locale: "en-CA"
   });
 
-  // Keep anything from hanging too long
   page.setDefaultNavigationTimeout(30000);
   page.setDefaultTimeout(30000);
 
   const listingSet = new Set();
   let pagesVisited = 0;
-
-  const HARD_CAP_PAGES = 25; // your site is ~20 pages, so 25 is safe
+  const HARD_CAP_PAGES = 25;
 
   for (let n = 1; n <= HARD_CAP_PAGES; n++) {
     const url = pageUrl(n);
     console.log(`\n=== Loading page ${n}: ${url}`);
 
-    // IMPORTANT: do NOT use waitUntil: "domcontentloaded" (can hang on JS sites)
     try {
-      await page.goto(url, { timeout: 30000 });
+      await page.goto(url, { waitUntil: "domcontentloaded", timeout: 30000 });
     } catch (e) {
       console.log(`goto timeout/fail on page ${n}, stopping.`);
+      console.log(String(e));
       break;
     }
 
     console.log(`Page ${n} loaded (navigation returned)`);
 
-    await page.waitForTimeout(4000);
+    await page.waitForTimeout(6000);
     await tryClickCookieOrModalButtons(page);
+
+    // scroll in case lazy render / lazy load is involved
+    await page.mouse.wheel(0, 1200).catch(() => {});
+    await page.waitForTimeout(2000);
+
+    const debugCounts = await page.evaluate(() => {
+      return {
+        cards: document.querySelectorAll(".vhs-list-block-outer").length,
+        detailLinks: document.querySelectorAll(".vhs-list-block-outer a.seeDetailsDL[href]").length,
+        anySeeDetails: document.querySelectorAll("a.seeDetailsDL[href]").length,
+        bodyTextSnippet: (document.body.innerText || "").slice(0, 500)
+      };
+    });
+
+    console.log(`Debug counts page ${n}:`, JSON.stringify(debugCounts, null, 2));
 
     console.log(`Waiting for listings on page ${n}...`);
     try {
       await waitForListings(page);
     } catch (e) {
       console.log(`No listings selector found on page ${n}, stopping.`);
+      fs.mkdirSync("docs", { recursive: true });
+      fs.writeFileSync(`docs/debug-page${n}.html`, await page.content(), "utf-8");
+      console.log(`Saved debug HTML to docs/debug-page${n}.html`);
       break;
     }
 
@@ -91,6 +107,9 @@ async function getListingUrls(page) {
 
     if (!urls.length) {
       console.log(`Page ${n} returned 0 urls, stopping.`);
+      fs.mkdirSync("docs", { recursive: true });
+      fs.writeFileSync(`docs/debug-page${n}.html`, await page.content(), "utf-8");
+      console.log(`Saved debug HTML to docs/debug-page${n}.html`);
       break;
     }
 
@@ -100,11 +119,8 @@ async function getListingUrls(page) {
 
     console.log(`Total unique listings so far: ${listingSet.size}`);
 
-    // If page n didn’t add anything new, then the runner is seeing repeats
     if (listingSet.size === before) {
-      console.log(
-        `No new listings added on page ${n} (runner may be seeing repeats), stopping.`
-      );
+      console.log(`No new listings added on page ${n}, stopping.`);
       break;
     }
   }
